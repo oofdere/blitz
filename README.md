@@ -53,14 +53,20 @@ Each patch below fixes something those calls reach, and each has a test in
    edits of the kinds above, with layouts between some of them. It fails on a
    panic and counts the seeds whose incremental layout differs from a full
    relayout. On upstream, 2,000 release seeds give 255 panics (`invalid SlotMap
-   key used`).
+   key used`). Since patch 8 it also gives elements `display: contents`, and
+   after the last layout it checks every layout list and every hoisted list. A
+   seed that breaks one of their rules is broken, and fails the fuzzer as a
+   panic does.
 2. **A hidden containing block lets go of its hoisted boxes, and a freed box
    leaves every layout list.** Hiding an element or removing a node made layout
    reach a freed box. Six tests. Brought over unchanged from niso's earlier
    vendored copy of blitz.
 3. **A containing block that claims a box takes it from the block that held
    it.** A box could sit in two containing blocks' lists, and freeing it left it
-   in one. One test. Brought over unchanged.
+   in one. One test. Brought over unchanged. That test stopped pinning this
+   patch once patch 4 landed: with patch 4 in place it passes without this one,
+   so its commit message claims more than the test shows. Patch 9's test pins
+   it instead.
 4. **A box changed while construction skips it is built when reached.**
    Something changed while hidden, or while a table skipped it, reused an
    inline layout whose boxes had been freed. Two tests. Brought over unchanged.
@@ -73,10 +79,81 @@ Each patch below fixes something those calls reach, and each has a test in
    now behind `default-ua-stylesheet`, which is on by default and on for every
    crate in this workspace. niso turns it off and supplies its own user-agent
    stylesheet through `DocumentConfig::ua_stylesheets`, so neither file is in
-   its build. Two tests. New.
+   its build. Two tests. New. This workspace's own dependency on `blitz-dom`
+   turns the feature on, so linking another crate of this fork (`blitz-paint`,
+   `blitz-html`, `blitz-shell`) would bring both files back into niso's
+   build. Nothing to change while niso uses `blitz-dom` alone.
+8. **An element that becomes `display: contents` lets go of its box.** Its
+   children were hoisted into the nearest container with a box, but it kept
+   its own list of layout children and its anonymous blocks, so that list named
+   boxes laid out elsewhere. Three tests. New.
+9. **A test that pins patch 3.** No code change. A box inside an absolutely
+   positioned box whose containing block becomes `display: contents` must be
+   in one hoisted list. Without patch 3, the fuzzer finds 126 broken seeds in
+   5,000. New.
+10. **Freeing many boxes of one container stays linear.** Patch 2 took each
+    freed box out of its container's lists with a pass over each whole list.
+    Now the containers are recorded and each one is swept once before
+    construction and again before layout. 20,000 boxes of one containing block
+    took 209 ms to remove in a release build, and now take 2.6 ms (2.9 ms on
+    upstream). One test. New.
+11. **A moved element takes the boxes under it out of their lists.** Moving an
+    element cleared only its own layout parent. The children of a
+    `display: contents` element and the boxes of an inline element are listed
+    by an ancestor's box, and stayed in that list after the move. The move now
+    walks the subtree, and every node whose layout parent is outside it leaves
+    that parent's list. Two tests. New.
+12. **One mutator that puts an element in and takes it out does not panic.**
+    The mutator queues `style`, `title` and form-control elements to process
+    when it is dropped, and it reached the ones already freed. It now skips
+    them. Three tests. New.
+13. **A replaced element gets no layout children, whatever its `display`.**
+    An `img`, `svg`, `canvas`, `video`, `embed` or `iframe` with
+    `display: table` and a child was built as a table and reached an
+    unreachable branch. One test. New.
+14. **Freeing a box clears the layout parent of the inline content that
+    points at it.** A read under a freed anonymous block reached it. One test.
+    New.
+15. **A read stops at a node that was freed.** The walk from an inline element
+    to its inline root used ids that a table had left out and that were
+    freed. One test. New.
+16. **A box that was never built is built when construction reaches it.** An
+    element put into a `display: none` subtree has no construction damage, so
+    it was not built when shown, and kept height 0. One test. New.
+17. **`Viewport` and `ColorScheme` are exported from `blitz-dom`.** niso sets a
+    viewport without naming `blitz-traits`. One test. New.
+18. **`get_client_bounding_rect` applies transforms.** The rect is mapped
+    through each containing block's position, scroll offset and `transform`,
+    as CSSOM View asks. The `offset*` path still ignores transforms. Five
+    tests. New.
+19. **An inline element reads its content area, not its line box.** Its rect
+    spans the font's ascent and descent around the baseline, which
+    `line-height` does not change, as CSS 2 10.6.1 has it. One test. New.
+20. **A child that a table leaves out reads as never laid out.** blitz builds
+    no anonymous rows and cells, so a block in a `display: table` has no box.
+    It kept the layout it had before the container became a table. One test.
+    New.
+21. **The children of a form control or replaced element read as never laid
+    out.** A block moved into one kept its old layout. One test. New.
+22. **A size read from the layout cache keeps its baselines.** Taffy's cache
+    keeps only a size for a measurement. An inline-block measured from the
+    cache had no baseline, sat its bottom on the line's baseline, and made the
+    line taller. A second cache keeps the baselines. One test. New.
+23. **An element that lets go of its box lets go of all of it.** One that
+    became inline kept its inline-root flag, inline layout and layout, and a
+    read used them. One test. New.
+24. **A box in a `display: none` subtree lets go of its box.** A block moved
+    into a hidden subtree and changed there reused its old box when moved out.
+    Construction of a hidden element now leaves its children out of layout,
+    and a node moved into a parent with no box leaves layout. One test. New.
+25. **A box whose layout changed resolves its transform again.** The
+    transform pass skipped a box with no damage of its own, so a box resized
+    by a change elsewhere kept the transform origin of its old size. A box
+    whose rounded layout changed now gets overflow damage, and so does every
+    box it is in. One test. New.
 
-With all seven, the fuzzer has no panicking seed in 2,000 debug and 20,000
-release seeds.
+With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
+20,000 release seeds.
 
 ### Left out on purpose
 
@@ -86,25 +163,44 @@ need:
 - `9c94a055` fixed a build with no default features. Upstream builds with
   default features off now, as this branch's tests show.
 - `9f7949b6` and `f7004c03` changed only `remove_and_drop_all_children`, which
-  niso never calls.
+  niso never calls. Patch 10 does what `9f7949b6` did, for every path that
+  frees a node.
 - Style sheets in tree order belong to loading HTML and CSS, a later step of
   niso's, and will come with it if they are still needed.
 
-### Known difference that is not fixed
+### Known cost that is not fixed
 
-Incremental layout can still give a different height from a full relayout. The
-smallest case: a `position: fixed` container holds an `inline-block` div and a
-block div, each with one line of text. After a layout, a div with one line of
-text is appended to the block div. The container's height is then 52px after
-incremental layout and 48px after a full relayout. Without fixed positioning,
-or with a block in place of the inline-block, both give 48px. The fuzzer counts
-these cases and does not fail on them.
+`remove_and_drop_node_with` takes a node out of its DOM parent's `children`
+with a pass over that list, on upstream as here. Removing n children of one
+parent one by one is still O(n²): 20,000 children take about 105 ms in a release
+build, both here and on upstream.
+
+### Known differences that are not fixed
+
+Incremental layout can still differ from a full relayout, in 2 of 20,000
+release seeds of the fuzzer (1 of 2,000 debug seeds). The fuzzer counts these
+cases and does not fail on them. The smallest one: a `display: flex` div with a
+`::before` is laid out, an absolutely positioned div comes into it, an inline,
+relatively positioned div with a fixed `::after` comes before it, and the flex
+div becomes `display: contents`. The absolutely positioned div is then at
+(8, 24) after incremental layout and at (0, 16) after a full relayout. Its
+static position, under a `display: contents` element in an inline flow, is
+where the two differ, and neither is checked against a browser yet. The case
+noted here before (a `position: fixed` container with an inline-block, 52px
+against 48px) gives 48px both ways now.
+
+blitz builds no anonymous table rows and cells (CSS 2.1 17.2.1). A child of a
+`display: table` box that is not a table part (a block, text) gets no box, and
+reads as never laid out, where a browser wraps it in an anonymous cell.
+
+An inline element with no content on any line has no fragment, and
+`get_client_bounding_rect` answers `None` for it.
 
 ### Running the tests
 
 ```
 cargo test -p blitz-dom --no-default-features --features system-fonts \
-  --test change_list --test ua_stylesheet
+  --test change_list --test ua_stylesheet --test rects
 CHANGE_LIST_FUZZ_SEEDS=20000 cargo test --release -p blitz-dom \
   --no-default-features --features system-fonts \
   --test change_list -- --ignored --nocapture change_list_fuzz
