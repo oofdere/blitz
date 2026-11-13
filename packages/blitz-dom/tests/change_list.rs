@@ -157,6 +157,24 @@ fn a_containing_block_removed_after_its_box_moved_out() {
     doc.resolve(0.0);
 }
 
+/// A box claimed by a second containing block leaves the first one's list, so
+/// the first never hands layout the box once it is freed.
+#[test]
+fn a_box_reclaimed_by_another_containing_block_leaves_the_first_ones_list() {
+    let (mut doc, body) = page(FUZZ_CSS);
+    let n1 = div(&mut doc, body, "db pk", "t");
+    let n3 = div(&mut doc, n1, "db pk af bs tr z ov", "t");
+    let n5 = div(&mut doc, n3, "db pk af z ov", "t");
+    doc.resolve(0.0);
+    append(&mut doc, n1, n5);
+    set_class(&mut doc, n1, "dt pk bf bs tr z");
+    doc.resolve(0.0);
+    set_class(&mut doc, n1, "db  af bs tr z ov");
+    doc.resolve(0.0);
+    set_class(&mut doc, n5, "di pa bs z ov");
+    doc.resolve(0.0);
+}
+
 const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";
 
 const FUZZ_CLASSES: [&str; 16] = [

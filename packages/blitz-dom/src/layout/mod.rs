@@ -721,15 +721,30 @@ impl LayoutContainingBlock for LayoutPassState<'_> {
 
     fn add_hoisted_children(&mut self, node_id: NodeId, hoisted: &[NodeId]) {
         let containing_block = dom_node_id(node_id);
-        let node = self.node_from_id(node_id);
-        node.hoisted_children
-            .borrow_mut()
-            .extend(hoisted.iter().copied().map(dom_node_id));
         for &hoisted_id in hoisted {
-            self.node_from_id(hoisted_id)
+            let hoisted_id = dom_node_id(hoisted_id);
+            let previous = self.nodes[hoisted_id]
                 .oof_containing_block
-                .set(Some(containing_block));
+                .replace(Some(containing_block));
+            // A box is in at most one containing block's list: the one its back-pointer
+            // names. A block that claimed it before and isn't laid out again (a cached
+            // one) would otherwise keep it, and hand layout a freed key once it goes.
+            if let Some(previous) = previous.filter(|&id| id != containing_block) {
+                if let Some(previous) = self.nodes.get(previous) {
+                    previous
+                        .hoisted_children
+                        .borrow_mut()
+                        .retain(|&id| id != hoisted_id);
+                }
+            }
         }
+        let mut list = self.node_from_id(node_id).hoisted_children.borrow_mut();
+        list.extend(hoisted.iter().copied().map(dom_node_id));
+        debug_assert!(
+            list.iter()
+                .all(|&id| self.nodes[id].oof_containing_block.get() == Some(containing_block)),
+            "a box in {containing_block:?}'s hoisted list names another containing block"
+        );
     }
 
     fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo<Atom> {
