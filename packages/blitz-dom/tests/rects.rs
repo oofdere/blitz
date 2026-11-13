@@ -160,3 +160,34 @@ fn an_inline_element_is_as_tall_as_its_content_area() {
         "y {y40}, height {height40}"
     );
 }
+
+/// A transformed box whose size changes because something else changed (here, the
+/// width of its shrink-to-fit container) must have its transform resolved again: its
+/// origin is the centre of its new box.
+#[test]
+fn a_transformed_box_resized_by_a_change_elsewhere() {
+    let read = |lay_out_first: bool| {
+        let (mut doc, body) = page();
+        let container = element(&mut doc, body, "div", "display: inline-block", "");
+        let node = element(
+            &mut doc,
+            container,
+            "div",
+            "height: 10px; transform: scale(2)",
+            "",
+        );
+        let sibling = element(&mut doc, container, "div", "", "");
+        let wide = element(&mut doc, sibling, "div", "width: 100px", "");
+        if lay_out_first {
+            doc.resolve(0.0);
+            let (x, _, width, height) = rect(&doc, node);
+            assert_eq!((x, width, height), (-50.0, 200.0, 20.0));
+        }
+        doc.mutate().remove_and_drop_node_with(wide, &mut |_| {});
+        doc.resolve(0.0);
+        rect(&doc, node)
+    };
+    assert_eq!(read(true), read(false));
+    let (x, _, width, height) = read(false);
+    assert_eq!((x, width, height), (0.0, 0.0, 20.0));
+}

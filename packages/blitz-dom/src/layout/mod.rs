@@ -889,7 +889,29 @@ impl RoundTree for LayoutPassState<'_> {
     }
 
     fn set_final_layout(&mut self, node_id: NodeId, layout: &Layout) {
-        *self.node_from_id_mut(node_id).final_layout_mut() = *layout;
+        let node = self.node_from_id_mut(node_id);
+        if node
+            .try_layout_data_mut()
+            .is_some_and(|data| data.final_layout == *layout)
+        {
+            return;
+        }
+        *node.final_layout_mut() = *layout;
+        // The transform (its origin and percentages) and the overflow of a box whose
+        // layout changed are resolved again, and so is the overflow of every box it is
+        // in: the transform pass skips a subtree whose root has no overflow damage.
+        let overflow = style::selector_parser::RestyleDamage::RECALCULATE_OVERFLOW;
+        let mut current = Some(dom_node_id(node_id));
+        while let Some(node) = current.and_then(|id| self.doc.nodes.get_mut(id)) {
+            if node
+                .damage()
+                .is_some_and(|damage| damage.contains(overflow))
+            {
+                break;
+            }
+            node.insert_damage(overflow);
+            current = node.containing_block();
+        }
     }
 
     fn is_out_of_flow(&self, node_id: NodeId) -> bool {
