@@ -595,6 +595,67 @@ fn a_box_whose_containing_block_becomes_contents_is_in_one_hoisted_list() {
     assert_hoisted_lists_consistent(&doc);
 }
 
+/// The elements `DocumentMutator` queues for its flush: form controls, `<style>` and
+/// `<title>`.
+const QUEUED_FOR_FLUSH: [&str; 9] = [
+    "input", "button", "select", "textarea", "fieldset", "output", "object", "style", "title",
+];
+
+/// The tags for which `edit` panics, each given a fresh page and an element holding
+/// a text node, not yet in the document.
+fn tags_that_panic(edit: impl Fn(&mut BaseDocument, NodeId, NodeId)) -> Vec<&'static str> {
+    QUEUED_FOR_FLUSH
+        .into_iter()
+        .filter(|tag| {
+            catch_unwind(AssertUnwindSafe(|| {
+                let (mut doc, body) = page("");
+                let element = create(&mut doc, tag);
+                let text = doc.mutate().create_text_node("div { color: red }");
+                append(&mut doc, element, text);
+                edit(&mut doc, body, element);
+                doc.resolve(0.0);
+            }))
+            .is_err()
+        })
+        .collect()
+}
+
+/// niso applies a task's changes with one mutator, so an element can come in and go
+/// out before the mutator flushes.
+#[test]
+fn an_element_put_in_and_taken_out_with_one_mutator() {
+    let panicked = tags_that_panic(|doc, body, element| {
+        let mut mutator = doc.mutate();
+        mutator.append_children(body, &[element]);
+        mutator.remove_and_drop_node_with(element, &mut |_| {});
+    });
+    assert!(panicked.is_empty(), "panicked for {panicked:?}");
+}
+
+#[test]
+fn an_element_put_in_and_its_parent_taken_out_with_one_mutator() {
+    let panicked = tags_that_panic(|doc, body, element| {
+        let parent = create(doc, "div");
+        let mut mutator = doc.mutate();
+        mutator.append_children(body, &[parent]);
+        mutator.append_children(parent, &[element]);
+        mutator.remove_and_drop_node_with(parent, &mut |_| {});
+    });
+    assert!(panicked.is_empty(), "panicked for {panicked:?}");
+}
+
+#[test]
+fn an_element_whose_text_changed_taken_out_with_one_mutator() {
+    let panicked = tags_that_panic(|doc, body, element| {
+        append(doc, body, element);
+        let text = doc.get_node(element).unwrap().children[0];
+        let mut mutator = doc.mutate();
+        mutator.set_node_text(text, "p { color: blue }");
+        mutator.remove_and_drop_node_with(element, &mut |_| {});
+    });
+    assert!(panicked.is_empty(), "panicked for {panicked:?}");
+}
+
 /// A `display: contents` element with a `::before` sits in a flex container, so its
 /// pseudo-element and its text are boxes in the container's list. The container is
 /// hidden, so construction skips it, and the element moves out and gets a new child.

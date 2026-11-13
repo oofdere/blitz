@@ -1137,18 +1137,27 @@ impl<'doc> DocumentMutator<'doc> {
             self.doc.has_canvas = self.doc.compute_has_canvas();
         }
 
-        if let Some(id) = self.title_node {
+        let in_document =
+            |doc: &BaseDocument, id| doc.get_node(id).is_some_and(|n| n.flags.is_in_document());
+
+        if let Some(id) = self.title_node
+            && in_document(self.doc, id)
+        {
             let title = self.doc.nodes[id].text_content();
             self.doc.shell_provider.set_window_title(title);
         }
 
         // Add/Update inline stylesheets (<style> elements)
         for id in self.style_nodes.drain() {
-            self.doc.process_style_element(id);
+            if in_document(self.doc, id) {
+                self.doc.process_style_element(id);
+            }
         }
 
         for id in self.form_nodes.drain() {
-            self.doc.reset_form_owner(id);
+            if self.doc.get_node(id).is_some() {
+                self.doc.reset_form_owner(id);
+            }
         }
 
         #[cfg(feature = "autofocus")]
