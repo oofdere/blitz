@@ -132,3 +132,31 @@ fn an_inline_element_in_a_translated_box() {
     let (x, y, width, height) = untransformed;
     assert_eq!(rect(&doc, node), (x + 10.0, y + 20.0, width, height));
 }
+
+/// An inline element's box is its content area, which `line-height` does not change:
+/// with a 40px line, the box is as tall as with a 10px one, and the half-leading puts
+/// it in the middle of the line.
+#[test]
+fn an_inline_element_is_as_tall_as_its_content_area() {
+    let read = |line_height: &str| {
+        let (mut doc, body) = page();
+        let parent = element(
+            &mut doc,
+            body,
+            "div",
+            &format!("line-height: {line_height}"),
+            "",
+        );
+        let node = element(&mut doc, parent, "span", "", "abc");
+        doc.resolve(0.0);
+        rect(&doc, node)
+    };
+    let (_, y40, _, height40) = read("40px");
+    let (_, _, _, height10) = read("10px");
+    assert_eq!(height40, height10);
+    assert!(height40 < 40.0);
+    assert!(
+        (y40 - (40.0 - height40) / 2.0).abs() <= 1.0,
+        "y {y40}, height {height40}"
+    );
+}

@@ -1886,7 +1886,6 @@ impl Node {
 
         // One rect per line box: the union of all of the target's fragments on that line
         Some(layout.lines().filter_map(move |line| {
-            let line_metrics = line.metrics();
             let mut line_rect: Option<taffy::Rect<f32>> = None;
 
             for item in line.items() {
@@ -1897,13 +1896,12 @@ impl Node {
                         }
                         let x0 = glyph_run.offset();
                         let x1 = x0 + glyph_run.advance();
-                        // Use the line box's block extent rather than the
-                        // run's font ascent/descent: fonts with small
-                        // typographic metrics would otherwise produce rects
-                        // that clip the rendered glyphs. This matches the
-                        // geometry used for text selection highlights.
-                        let y0 = line_metrics.block_min_coord;
-                        let y1 = line_metrics.block_max_coord;
+                        // The inline box's content area: the ascent and descent of
+                        // the span's first available font around the baseline, as
+                        // CSS 2's 10.6.1 has it. `line-height` does not change it.
+                        let metrics = glyph_run.span_metrics();
+                        let y0 = glyph_run.baseline() - metrics.ascent;
+                        let y1 = glyph_run.baseline() + metrics.descent;
                         union(&mut line_rect, x0, y0, x1, y1);
                     }
                     PositionedLayoutItem::InlineBox(inline_box) => {
