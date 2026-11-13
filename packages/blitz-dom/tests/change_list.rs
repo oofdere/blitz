@@ -175,6 +175,49 @@ fn a_box_reclaimed_by_another_containing_block_leaves_the_first_ones_list() {
     doc.resolve(0.0);
 }
 
+/// An inline root that loses a child as it moves into a display: none box is
+/// built again once that box is shown, and not laid out with the inline box
+/// that was freed.
+#[test]
+fn an_inline_root_changed_as_it_is_hidden_is_rebuilt_when_shown() {
+    let (mut doc, body) = page(HOISTING);
+    let root = div(&mut doc, body, "", "x");
+    let gone = create(&mut doc, "span");
+    set_class(&mut doc, gone, "ib");
+    let y = doc.mutate().create_text_node("y");
+    append(&mut doc, gone, y);
+    append(&mut doc, root, gone);
+    let z = doc.mutate().create_text_node("z");
+    append(&mut doc, root, z);
+    let outer = div(&mut doc, body, "hidden", "");
+    doc.resolve(0.0);
+    remove(&mut doc, gone);
+    append(&mut doc, outer, root);
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "");
+    doc.resolve(0.0);
+}
+
+/// The same for a block inside a table, which the table builder skips.
+#[test]
+fn an_inline_root_changed_while_a_table_skips_it_is_rebuilt_after() {
+    let (mut doc, body) = page(HOISTING);
+    let outer = div(&mut doc, body, "", "");
+    let root = div(&mut doc, outer, "", "x");
+    let gone = create(&mut doc, "span");
+    set_class(&mut doc, gone, "ib");
+    let y = doc.mutate().create_text_node("y");
+    append(&mut doc, gone, y);
+    append(&mut doc, root, gone);
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "table");
+    doc.resolve(0.0);
+    remove(&mut doc, gone);
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "");
+    doc.resolve(0.0);
+}
+
 const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";
 
 const FUZZ_CLASSES: [&str; 16] = [

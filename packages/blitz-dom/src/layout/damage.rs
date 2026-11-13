@@ -148,6 +148,10 @@ impl BaseDocument {
             damage.remove(ONLY_RELAYOUT);
         }
 
+        if damage.intersects(CONSTRUCT_BOX | CONSTRUCT_FC) {
+            node.flags.insert(NodeFlags::NEEDS_CONSTRUCTION);
+        }
+
         // Store damage for current node
         node.set_damage(damage);
 

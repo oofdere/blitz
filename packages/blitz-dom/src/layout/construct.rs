@@ -417,6 +417,9 @@ fn collect_layout_children_with_wrap(
     doc.nodes[container_node_id]
         .flags
         .reset_construction_flags();
+    doc.nodes[container_node_id]
+        .flags
+        .remove(NodeFlags::NEEDS_CONSTRUCTION);
     if let Some(element_data) = doc.nodes[container_node_id].element_data_mut() {
         element_data.take_inline_layout();
     }

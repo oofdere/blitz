@@ -62,6 +62,11 @@ bitflags! {
         const IS_IN_DOCUMENT = 0b00000100;
         /// Whether the node is an inline box whose in-flow content is block-level only
         const IS_INLINE_WITH_ONLY_BLOCK_CHILDREN = 0b00001000;
+        /// Whether the node has had construction damage since its box was last built.
+        /// Construction skips some subtrees (`display: none`, a table's non-table
+        /// children) while their damage is still cleared, so this keeps the box marked
+        /// until construction next reaches it
+        const NEEDS_CONSTRUCTION = 0b00010000;
     }
 }
 

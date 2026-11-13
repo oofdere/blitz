@@ -30,7 +30,7 @@ use crate::{
         damage::{ALL_DAMAGE, CONSTRUCT_BOX, CONSTRUCT_DESCENDENT, CONSTRUCT_FC},
         inline::build_inline_layout_into,
     },
-    node::TextBrush,
+    node::{NodeFlags, TextBrush},
 };
 
 impl BaseDocument {
@@ -257,11 +257,11 @@ impl BaseDocument {
             }
 
             let mut damage = doc.nodes[node_id].damage().unwrap_or(ALL_DAMAGE);
-            let _flags = doc.nodes[node_id].flags;
+            let needs_construction = doc.nodes[node_id]
+                .flags
+                .contains(NodeFlags::NEEDS_CONSTRUCTION);
 
-            if damage.intersects(CONSTRUCT_FC | CONSTRUCT_BOX) {
-                //} || flags.contains(NodeFlags::IS_INLINE_ROOT) {
-
+            if damage.intersects(CONSTRUCT_FC | CONSTRUCT_BOX) || needs_construction {
                 // Deallocate the anonymous blocks created for this node in the
                 // previous construction round. They live only in the slab, so
                 // reconstructing without freeing them would leak a slab entry per
@@ -324,8 +324,6 @@ impl BaseDocument {
     /// anonymous boxes.
     #[cfg(debug_assertions)]
     fn assert_layout_parents_consistent(&self) {
-        use crate::node::NodeFlags;
-
         for (parent_id, node) in self.nodes.iter() {
             if !node.flags.contains(NodeFlags::IS_IN_DOCUMENT) {
                 continue;
