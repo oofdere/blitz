@@ -968,3 +968,64 @@ fn a_block_that_becomes_inline_reads_as_on_a_fresh_page() {
     };
     assert_eq!(read(true), read(false));
 }
+
+/// A block is moved into a `display: none` subtree (hidden from the start, or hidden
+/// after it was laid out), its text changes there, the page is laid out, and the block
+/// is moved back. Construction never reaches it while it is hidden, so it must not
+/// keep the box it had: it must read as on a page laid out only at the end.
+#[test]
+fn a_block_changed_while_moved_into_a_hidden_subtree() {
+    let height = |hidden_after_layout: bool, change: usize, incremental: bool| {
+        let (mut doc, body) = page("");
+        let hidden = div(&mut doc, body, "", "");
+        if !hidden_after_layout {
+            doc.mutate()
+                .set_attribute(hidden, attr("style"), "display: none");
+        }
+        let hidden_child = div(&mut doc, hidden, "", "");
+        let visible = div(&mut doc, body, "", "");
+        let block = div(&mut doc, visible, "", "some text");
+        let text = doc.get_node(block).unwrap().children[0];
+        let sink = div(&mut doc, body, "", "");
+        if incremental {
+            doc.resolve(0.0);
+        }
+        if hidden_after_layout {
+            doc.mutate()
+                .set_attribute(hidden, attr("style"), "display: none");
+            if incremental {
+                doc.resolve(0.0);
+            }
+        }
+        append(&mut doc, hidden_child, block);
+        match change {
+            0 => append(&mut doc, sink, text),
+            1 => remove(&mut doc, text),
+            _ => doc
+                .mutate()
+                .set_node_text(text, &"a longer text ".repeat(20)),
+        }
+        if incremental {
+            doc.resolve(0.0);
+        }
+        append(&mut doc, visible, block);
+        doc.resolve(0.0);
+        doc.get_client_bounding_rect(block).unwrap().height
+    };
+    let mut differ = Vec::new();
+    for hidden_after_layout in [false, true] {
+        for change in 0..3 {
+            let (kept, fresh) = (
+                height(hidden_after_layout, change, true),
+                height(hidden_after_layout, change, false),
+            );
+            if kept != fresh {
+                differ.push((hidden_after_layout, change, kept, fresh));
+            }
+        }
+    }
+    assert!(
+        differ.is_empty(),
+        "(hidden after layout, change, kept, fresh): {differ:?}"
+    );
+}

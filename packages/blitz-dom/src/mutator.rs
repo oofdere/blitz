@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::mem;
 use std::ops::{Deref, DerefMut, Range};
 
+use crate::layout::construct::leave_out_of_layout;
 use crate::layout::damage::ALL_DAMAGE;
 use crate::net::{ImageHandler, ResourceHandler, StylesheetHandler};
 use crate::node::{CanvasData, NodeFlags, SpecialElementData};
@@ -894,6 +895,12 @@ impl DocumentMutator<'_> {
                 continue;
             };
             self.doc.take_out_of_layout_parent(child_id);
+            // Into a parent with no box (one in a `display: none` subtree, or never built),
+            // the child is not reached by construction, and its own changes there are
+            // not seen: it lets go of its box, to be built when it is reached again.
+            if self.doc.nodes[parent_id].layout_children.borrow().is_none() {
+                leave_out_of_layout(self.doc, child_id);
+            }
 
             let old_parent = &mut self.doc.nodes[old_parent_id];
             old_parent.insert_damage(ALL_DAMAGE);

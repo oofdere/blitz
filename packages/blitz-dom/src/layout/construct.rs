@@ -527,7 +527,7 @@ fn collect_layout_children_with_wrap(
     );
 
     match container_display.inside() {
-        DisplayInside::None => {}
+        DisplayInside::None => leave_children_out_of_layout(doc, container_node_id),
         DisplayInside::Contents => {
             doc.nodes[container_node_id]
                 .remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
