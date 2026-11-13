@@ -14,6 +14,7 @@
 use std::cell::RefCell;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::time::{Duration, Instant};
 
 use blitz_dom::{
     BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
@@ -592,4 +593,48 @@ fn a_box_whose_containing_block_becomes_contents_is_in_one_hoisted_list() {
     set_class(&mut doc, outer, "dc");
     doc.resolve(0.0);
     assert_hoisted_lists_consistent(&doc);
+}
+
+/// Remove `count` absolutely positioned boxes one by one through one mutator, as niso
+/// does, and lay out again. Each box sits in its own wrapper of `wrapper_class` inside one
+/// containing block: a `display: contents` wrapper leaves every box in the containing
+/// block's two layout lists, a relatively positioned one gives each box lists of its own.
+fn time_removing_boxes(count: usize, wrapper_class: &str) -> Duration {
+    let (mut doc, body) = page(HOISTING);
+    let cb = create(&mut doc, "div");
+    set_class(&mut doc, cb, "cb");
+    append(&mut doc, body, cb);
+    let mut wrappers = Vec::new();
+    let mut boxes = Vec::new();
+    for _ in 0..count {
+        let wrapper = create(&mut doc, "div");
+        set_class(&mut doc, wrapper, wrapper_class);
+        let abs = create(&mut doc, "div");
+        set_class(&mut doc, abs, "abs");
+        append(&mut doc, wrapper, abs);
+        wrappers.push(wrapper);
+        boxes.push(abs);
+    }
+    doc.mutate().append_children(cb, &wrappers);
+    doc.resolve(0.0);
+
+    let start = Instant::now();
+    let mut mutator = doc.mutate();
+    for abs in boxes {
+        mutator.remove_and_drop_node_with(abs, &mut |_| {});
+    }
+    drop(mutator);
+    doc.resolve(0.0);
+    start.elapsed()
+}
+
+#[test]
+fn removing_many_boxes_of_one_container_stays_linear() {
+    let count = 20_000;
+    let shared = time_removing_boxes(count, "dc");
+    let own = time_removing_boxes(count, "cb");
+    assert!(
+        shared < own * 3,
+        "removing {count} boxes from one container's lists took {shared:?}, from lists of their own {own:?}"
+    );
 }

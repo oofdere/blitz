@@ -317,6 +317,10 @@ pub struct BaseDocument {
     pub(crate) has_changes: bool,
     /// Set of changed nodes for updating the accessibility tree
     pub(crate) deferred_construction_nodes: Vec<ConstructionTask>,
+    /// The containers whose layout lists name a node freed since the last sweep. Each is
+    /// swept once, before construction and again before layout
+    /// ([`Self::sweep_layout_lists`]), so freeing many boxes of one container stays linear.
+    layout_lists_to_sweep: HashSet<NodeId>,
 
     /// Nodes that contain custom widgets
     #[cfg(feature = "custom-widget")]
@@ -504,6 +508,7 @@ impl BaseDocument {
 
             has_changes: false,
             deferred_construction_nodes: Vec::new(),
+            layout_lists_to_sweep: HashSet::new(),
             image_cache: HashMap::new(),
             pending_images: HashMap::new(),
             pending_style_image_nodes: Vec::new(),
@@ -902,8 +907,9 @@ impl BaseDocument {
     /// it so that stale NodeIds are never dereferenced after the slot is freed.
     pub(crate) fn remove_node_from_tree(&mut self, node_id: NodeId) -> Option<Node> {
         self.clear_interaction_state_for_removed_node(node_id);
-        self.unlink_removed_node_from_layout(node_id);
-        self.nodes.remove(node_id)
+        let node = self.nodes.remove(node_id)?;
+        self.unlink_removed_node_from_layout(node_id, &node);
+        Some(node)
     }
 
     /// Take `node_id`, which is leaving its parent, out of its layout parent's
@@ -920,27 +926,13 @@ impl BaseDocument {
         }
     }
 
-    /// Remove `node_id`, which is being removed from the slab, from the layout lists that
+    /// Take `node`, just removed from the slab as `node_id`, out of the layout lists that
     /// name it (its layout parent's `layout_children` and its containing block's
     /// `hoisted_children`), and clear the back-pointers of the boxes it lists. A container
     /// that is not reconstructed or laid out again before the next layout pass (one in a
-    /// `display: none` subtree) would otherwise hand layout a freed key.
-    fn unlink_removed_node_from_layout(&self, node_id: NodeId) {
-        let Some(node) = self.nodes.get(node_id) else {
-            return;
-        };
-        if let Some(parent) = node.layout_parent.get().and_then(|id| self.nodes.get(id)) {
-            if let Some(children) = parent.layout_children.borrow_mut().as_mut() {
-                children.retain(|id| *id != node_id);
-            }
-        }
-        if let Some(cb) = node
-            .oof_containing_block
-            .get()
-            .and_then(|id| self.nodes.get(id))
-        {
-            cb.hoisted_children.borrow_mut().retain(|id| *id != node_id);
-        }
+    /// `display: none` subtree) would otherwise hand layout a freed key. The two lists
+    /// are recorded here and swept before the next layout.
+    fn unlink_removed_node_from_layout(&mut self, node_id: NodeId, node: &Node) {
         for &child_id in node.layout_children.borrow().iter().flatten() {
             if let Some(child) = self.nodes.get(child_id) {
                 if child.layout_parent.get() == Some(node_id) {
@@ -954,6 +946,33 @@ impl BaseDocument {
                     hoisted.oof_containing_block.set(None);
                 }
             }
+        }
+        self.layout_lists_to_sweep.extend(
+            [node.layout_parent.get(), node.oof_containing_block.get()]
+                .into_iter()
+                .flatten(),
+        );
+    }
+
+    /// Drop the freed boxes from `owner`'s `layout_children` and `hoisted_children`. A
+    /// freed `NodeId` never resolves again, so whatever no longer resolves is freed.
+    fn sweep_freed_from_layout_lists(&self, owner: NodeId) {
+        let Some(owner) = self.nodes.get(owner) else {
+            return;
+        };
+        if let Some(children) = owner.layout_children.borrow_mut().as_mut() {
+            children.retain(|id| self.nodes.contains_key(*id));
+        }
+        owner
+            .hoisted_children
+            .borrow_mut()
+            .retain(|id| self.nodes.contains_key(*id));
+    }
+
+    /// Drop the freed boxes from the layout lists recorded since the last sweep.
+    pub(crate) fn sweep_layout_lists(&mut self) {
+        for owner in std::mem::take(&mut self.layout_lists_to_sweep) {
+            self.sweep_freed_from_layout_lists(owner);
         }
     }
 

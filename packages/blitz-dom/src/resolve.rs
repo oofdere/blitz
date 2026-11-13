@@ -36,6 +36,7 @@ use crate::{
 impl BaseDocument {
     /// Restyle the tree and then relayout it
     pub fn resolve(&mut self, current_time_for_animations: f64) {
+        self.sweep_layout_lists();
         if self.root_node().first_element_child().is_none() {
             #[cfg(feature = "tracing")]
             tracing::warn!("No DOM - not resolving");
@@ -103,6 +104,8 @@ impl BaseDocument {
         // pseudo-element box construction), fetching any not-yet-loaded images.
         self.flush_pending_style_images();
         timer.record_time("pconstruct");
+
+        self.sweep_layout_lists();
 
         // Next we resolve layout with the data resolved by stlist
         self.resolve_layout();
