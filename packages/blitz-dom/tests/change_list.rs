@@ -91,6 +91,30 @@ fn hoisting() -> (BaseDocument, [NodeId; 5]) {
     (doc, [body, outer, cb, b, flow])
 }
 
+/// Every out-of-flow box a containing block in the document lists is in the slab,
+/// names that block as its containing block, and is in no other block's list.
+fn assert_hoisted_lists_consistent(doc: &BaseDocument) {
+    let mut listed_by = std::collections::HashMap::new();
+    for (container, node) in doc.tree().iter() {
+        if !node.flags.is_in_document() {
+            continue;
+        }
+        for &child in node.hoisted_children.borrow().iter() {
+            let Some(child_node) = doc.get_node(child) else {
+                panic!("{container:?} hoists {child:?}, which has been freed");
+            };
+            assert_eq!(
+                child_node.oof_containing_block.get(),
+                Some(container),
+                "{container:?} hoists {child:?}, whose containing block is another box"
+            );
+            if let Some(other) = listed_by.insert(child, container) {
+                panic!("{child:?} is in the hoisted lists of {other:?} and {container:?}");
+            }
+        }
+    }
+}
+
 /// Every box a container in the document lists points back at it, and is in the slab.
 fn assert_layout_lists_consistent(doc: &BaseDocument) {
     for (container, node) in doc.tree().iter() {
@@ -291,10 +315,11 @@ fn a_box_moved_out_of_a_hidden_subtree_leaves_its_old_containers_list() {
     assert_layout_lists_consistent(&doc);
 }
 
-const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";
+const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}.dc{display:contents}";
 
-const FUZZ_CLASSES: [&str; 16] = [
+const FUZZ_CLASSES: [&str; 17] = [
     "db", "di", "dt", "dib", "dn", "pa", "pr", "pf", "pk", "bf", "af", "bs", "tr", "z", "ov", "fl",
+    "dc",
 ];
 
 thread_local! {
@@ -344,6 +369,9 @@ enum Seed {
     /// Layout of the edited tree differs from a full relayout of it.
     Stale,
     Panicked(String),
+    /// After the incremental layout, a layout list or a hoisted list names a box
+    /// it should not.
+    Broken(String),
 }
 
 /// One seed: ops random edits of the kinds niso makes, with layouts between
@@ -434,6 +462,13 @@ fn fuzz_seed(seed: u64, ops: u32) -> Seed {
     if catch_unwind(AssertUnwindSafe(|| doc.resolve(0.0))).is_err() {
         return panicked();
     }
+    let lists = catch_unwind(AssertUnwindSafe(|| {
+        assert_layout_lists_consistent(&doc);
+        assert_hoisted_lists_consistent(&doc);
+    }));
+    if lists.is_err() {
+        return Seed::Broken(LAST_PANIC.with(|p| p.borrow().clone()));
+    }
     let digest = shown_digest(&doc, &nodes);
     doc.set_incremental_layout(false);
     if catch_unwind(AssertUnwindSafe(|| doc.resolve(0.0))).is_err() {
@@ -472,20 +507,22 @@ fn change_list_fuzz() {
         let message = info.payload_as_str().unwrap_or("");
         LAST_PANIC.with(|p| *p.borrow_mut() = format!("{location}: {message}"));
     }));
-    let (mut clean, mut stale, mut panicked) = (0, Vec::new(), Vec::new());
+    let (mut clean, mut stale, mut panicked, mut broken) = (0, Vec::new(), Vec::new(), Vec::new());
     for seed in first..first + seeds {
         match fuzz_seed(seed, ops) {
             Seed::Clean => clean += 1,
             Seed::Stale => stale.push(seed),
             Seed::Panicked(why) => panicked.push((seed, why)),
+            Seed::Broken(why) => broken.push((seed, why)),
         }
     }
     let _ = std::panic::take_hook();
     println!(
-        "change list fuzz, seeds {first}..{}: {clean} clean, {} stale, {} panicked",
+        "change list fuzz, seeds {first}..{}: {clean} clean, {} stale, {} panicked, {} broken",
         first + seeds,
         stale.len(),
-        panicked.len()
+        panicked.len(),
+        broken.len()
     );
     for seed in stale.iter().take(10) {
         println!("  stale seed {seed}");
@@ -493,5 +530,51 @@ fn change_list_fuzz() {
     for (seed, why) in panicked.iter().take(20) {
         println!("  panicked seed {seed}: {why}");
     }
-    assert!(panicked.is_empty());
+    for (seed, why) in broken.iter().take(20) {
+        println!("  broken seed {seed}: {why}");
+    }
+    assert!(panicked.is_empty() && broken.is_empty());
+}
+
+/// A block that becomes display: contents gives its children to its parent's
+/// box, and no list still names them.
+#[test]
+fn a_block_that_becomes_contents_lets_go_of_its_children() {
+    let (mut doc, body) = page(".dc { display: contents }");
+    let outer = div(&mut doc, body, "", "t");
+    div(&mut doc, outer, "", "t");
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "dc");
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+}
+
+/// The same, then a child of the display: contents element moves elsewhere.
+#[test]
+fn a_child_of_a_contents_element_moves_out() {
+    let (mut doc, body) = page(".dc { display: contents }");
+    let outer = div(&mut doc, body, "", "t");
+    let inner = div(&mut doc, outer, "", "t");
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "dc");
+    doc.resolve(0.0);
+    let target = div(&mut doc, body, "", "t");
+    append(&mut doc, target, inner);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+}
+
+/// display: contents inside display: contents.
+#[test]
+fn contents_inside_contents() {
+    let (mut doc, body) = page(".dc { display: contents }");
+    let outer = div(&mut doc, body, "", "t");
+    let middle = div(&mut doc, outer, "", "t");
+    div(&mut doc, middle, "", "t");
+    doc.resolve(0.0);
+    set_class(&mut doc, middle, "dc");
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "dc");
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
 }

@@ -516,6 +516,7 @@ fn collect_layout_children_with_wrap(
         DisplayInside::Contents => {
             doc.nodes[container_node_id]
                 .remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
+            let_go_of_own_box(doc, container_node_id);
             // display:contents is transparent for box generation: hoist the
             // children THEMSELVES (not their layout children) into the
             // parent, recursing only through nested contents nodes.
@@ -939,6 +940,21 @@ fn create_checkbox_input(doc: &mut BaseDocument, input_element_id: NodeId) {
     }
 }
 
+/// An element that no longer has a box of its own (display: contents, or laid out in
+/// an inline formatting context's flow) lets go of what its box kept: its anonymous
+/// blocks, which construction would otherwise never free, and its list of layout
+/// children, which names boxes whose layout parent is now another container.
+fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
+    let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
+    for anon_id in anonymous_blocks {
+        doc.deallocate_anonymous_block(anon_id);
+    }
+    let node = &mut doc.nodes[node_id];
+    *node.layout_children.get_mut() = None;
+    node.flags
+        .remove(NodeFlags::IS_INLINE_WITH_ONLY_BLOCK_CHILDREN);
+}
+
 /// Find and return the "layout_children" (inline boxes) for an inline layout
 /// without actually constructing the layout. This allows us to defer the expensive
 /// construction of the Parley layout (which invokes text shaping) to a paralell phase.
@@ -965,14 +981,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
     // anonymous blocks, which construction would otherwise never free, and its list of
     // layout children, which names boxes that now belong to other containers.
     for node_id in boxless {
-        let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
-        for anon_id in anonymous_blocks {
-            doc.deallocate_anonymous_block(anon_id);
-        }
-        let node = &mut doc.nodes[node_id];
-        *node.layout_children.get_mut() = None;
-        node.flags
-            .remove(NodeFlags::IS_INLINE_WITH_ONLY_BLOCK_CHILDREN);
+        let_go_of_own_box(doc, node_id);
     }
 
     fn flush_inline_pseudos_recursive(doc: &mut BaseDocument, node_id: NodeId) {
