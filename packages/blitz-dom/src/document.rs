@@ -966,6 +966,30 @@ impl BaseDocument {
                 }
             }
         }
+        // The text and inline elements of an inline formatting context point at its root
+        // without being in its list. An anonymous block's are its children.
+        let mut inline_content: Vec<NodeId> = node
+            .before()
+            .into_iter()
+            .chain(node.children.iter().copied())
+            .chain(node.after())
+            .collect();
+        while let Some(id) = inline_content.pop() {
+            let Some(content) = self.nodes.get(id) else {
+                continue;
+            };
+            if content.layout_parent.get() != Some(node_id) {
+                continue;
+            }
+            content.layout_parent.set(None);
+            inline_content.extend(
+                content
+                    .before()
+                    .into_iter()
+                    .chain(content.children.iter().copied())
+                    .chain(content.after()),
+            );
+        }
         self.layout_lists_to_sweep.extend(
             [node.layout_parent.get(), node.oof_containing_block.get()]
                 .into_iter()

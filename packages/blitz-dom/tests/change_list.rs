@@ -656,6 +656,36 @@ fn an_element_whose_text_changed_taken_out_with_one_mutator() {
     assert!(panicked.is_empty(), "panicked for {panicked:?}");
 }
 
+/// An inline element sits in an inline flow next to a block, so construction wraps
+/// the flow in an anonymous block, and the element's layout parent is that block. Its
+/// container then becomes `display: none` or `display: table`, which frees the
+/// anonymous block, and the element is read.
+#[test]
+fn a_read_after_its_anonymous_block_is_freed() {
+    let mut panicked = Vec::new();
+    for display in ["none", "table"] {
+        let read = || {
+            let (mut doc, body) = page("");
+            let container = div(&mut doc, body, "", "");
+            let inline = create(&mut doc, "span");
+            let text = doc.mutate().create_text_node("t");
+            append(&mut doc, inline, text);
+            append(&mut doc, container, inline);
+            let block = create(&mut doc, "div");
+            append(&mut doc, container, block);
+            doc.resolve(0.0);
+            doc.mutate()
+                .set_attribute(container, attr("style"), &format!("display: {display}"));
+            doc.resolve(0.0);
+            let _ = doc.get_client_bounding_rect(inline);
+        };
+        if catch_unwind(AssertUnwindSafe(read)).is_err() {
+            panicked.push(display);
+        }
+    }
+    assert!(panicked.is_empty(), "panicked for {panicked:?}");
+}
+
 /// A replaced element is laid out as a leaf whatever its `display`, even with children.
 #[test]
 fn a_replaced_element_with_a_child_laid_out_as_any_display() {
