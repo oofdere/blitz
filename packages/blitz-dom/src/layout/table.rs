@@ -28,7 +28,7 @@ use taffy::{
 use crate::BaseDocument;
 use crate::layout::LayoutPassState;
 
-use super::construct::leave_out_of_layout;
+use super::construct::{leave_out_of_layout, let_go_of_own_box};
 use super::damage::{CONSTRUCT_BOX, CONSTRUCT_DESCENDENT, CONSTRUCT_FC};
 use super::resolve_calc_value;
 
@@ -582,6 +582,7 @@ fn collect_table_cells(
                 );
             }
             doc.nodes[node_id].children = children;
+            let_go_of_box_in_table(doc, node_id);
             if display.inside() != DisplayInside::Contents {
                 for row in &mut rows[first_row..] {
                     row.group.get_or_insert(node_id);
@@ -623,6 +624,7 @@ fn collect_table_cells(
                 );
             }
             doc.nodes[node_id].children = children;
+            let_go_of_box_in_table(doc, node_id);
         }
         DisplayInside::TableCell => {
             // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
@@ -762,6 +764,18 @@ fn collect_table_cells(
             // Ignore
             leave_out_of_layout(doc, node_id);
         }
+    }
+}
+
+/// A row, a row group or a `display: contents` element in a table has no box of its
+/// own: the table lays out its cells. It lets go of what a box it had before kept (a
+/// row outside a table is laid out as a block), and its pseudo-elements, which the
+/// table does not lay out, get no box.
+fn let_go_of_box_in_table(doc: &mut BaseDocument, node_id: NodeId) {
+    let_go_of_own_box(doc, node_id);
+    let node = &doc.nodes[node_id];
+    for pseudo in node.before().into_iter().chain(node.after()) {
+        leave_out_of_layout(doc, pseudo);
     }
 }
 

@@ -604,6 +604,32 @@ fn an_empty_block_that_becomes_contents_without_its_before() {
     );
 }
 
+/// A table-row outside a table is laid out as a block, and lists the boxes in it.
+/// Its parent then becomes a table, which builds no box for the row and none for
+/// a child of the row that is not a cell, so the row lists no layout children.
+#[test]
+fn a_row_whose_parent_becomes_a_table_lets_go_of_its_children() {
+    let (mut doc, body) = page(".row { display: table-row } .table { display: table }");
+    let table = div(&mut doc, body, "", "");
+    let row = create(&mut doc, "div");
+    set_class(&mut doc, row, "row");
+    append(&mut doc, table, row);
+    let span = create(&mut doc, "span");
+    append(&mut doc, row, span);
+    div(&mut doc, span, "", "");
+    doc.resolve(0.0);
+    set_class(&mut doc, table, "table");
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+    assert!(
+        doc.get_node(row)
+            .unwrap()
+            .layout_children
+            .borrow()
+            .is_none()
+    );
+}
+
 /// An absolutely positioned box whose containing block becomes display: contents
 /// is claimed by the next containing block up, and leaves the hoisted list of the
 /// first one, which is not laid out again: a box is in one hoisted list at most,

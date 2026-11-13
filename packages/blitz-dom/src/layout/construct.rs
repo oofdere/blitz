@@ -995,7 +995,7 @@ fn leave_children_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
 /// the flags and inline layout of the formatting context it established; and its layout
 /// and layout cache, which layout no longer writes. A read then finds what it finds for
 /// an element that never had a box.
-fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
+pub(crate) fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
     let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
     for anon_id in anonymous_blocks {
         doc.deallocate_anonymous_block(anon_id);
