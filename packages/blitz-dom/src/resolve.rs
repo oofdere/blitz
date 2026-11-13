@@ -260,9 +260,11 @@ impl BaseDocument {
             }
 
             let mut damage = doc.nodes[node_id].damage().unwrap_or(ALL_DAMAGE);
-            let needs_construction = doc.nodes[node_id]
-                .flags
-                .contains(NodeFlags::NEEDS_CONSTRUCTION);
+            let node = &doc.nodes[node_id];
+            let never_built = node.layout_children.borrow().is_none()
+                && (node.is_element() || node.is_anonymous());
+            let needs_construction =
+                node.flags.contains(NodeFlags::NEEDS_CONSTRUCTION) || never_built;
 
             if damage.intersects(CONSTRUCT_FC | CONSTRUCT_BOX) || needs_construction {
                 // Deallocate the anonymous blocks created for this node in the

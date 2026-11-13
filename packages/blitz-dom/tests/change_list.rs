@@ -715,6 +715,29 @@ fn a_read_under_a_child_the_table_leaves_out() {
     assert_layout_lists_consistent(&doc);
 }
 
+/// A hidden container holds two nested blocks. A block with text comes into the inner
+/// one, and the page is laid out while the container is still hidden, so the new block
+/// is never built. Then the container is shown.
+#[test]
+fn a_box_put_in_while_hidden_is_built_when_shown() {
+    let height = |lay_out_while_hidden: bool| {
+        let (mut doc, body) = page(FUZZ_CSS);
+        let container = div(&mut doc, body, "dn", "");
+        let outer = div(&mut doc, container, "", "");
+        let inner = div(&mut doc, outer, "", "");
+        doc.resolve(0.0);
+        div(&mut doc, inner, "", "t");
+        if lay_out_while_hidden {
+            doc.resolve(0.0);
+        }
+        set_class(&mut doc, container, "");
+        doc.resolve(0.0);
+        doc.get_client_bounding_rect(container).unwrap().height
+    };
+    assert_eq!(height(true), height(false));
+    assert!(height(false) > 0.0);
+}
+
 /// A replaced element is laid out as a leaf whatever its `display`, even with children.
 #[test]
 fn a_replaced_element_with_a_child_laid_out_as_any_display() {
