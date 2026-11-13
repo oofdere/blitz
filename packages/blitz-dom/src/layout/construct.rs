@@ -435,15 +435,18 @@ fn collect_layout_children_with_wrap(
                 .downcast_element()
                 .and_then(|el| el.attr(local_name!("type")));
             if tag_name == "textarea" {
+                leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, true);
                 return;
             } else if matches!(
                 type_attr,
                 None | Some("text" | "password" | "email" | "number" | "search" | "tel" | "url")
             ) {
+                leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, false);
                 return;
             } else if matches!(type_attr, Some("checkbox" | "radio")) {
+                leave_children_out_of_layout(doc, container_node_id);
                 create_checkbox_input(doc, container_node_id);
                 return;
             }
@@ -457,6 +460,7 @@ fn collect_layout_children_with_wrap(
             doc.iter_subtree_mut(container_node_id, |id: NodeId, doc: &mut BaseDocument| {
                 doc.nodes[id].remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
             });
+            leave_children_out_of_layout(doc, container_node_id);
 
             match crate::util::parse_svg_image(outer_html.as_bytes()) {
                 Ok(svg) => {
@@ -489,6 +493,7 @@ fn collect_layout_children_with_wrap(
             doc.iter_subtree_mut(container_node_id, |id: NodeId, doc: &mut BaseDocument| {
                 doc.nodes[id].remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
             });
+            leave_children_out_of_layout(doc, container_node_id);
             return;
         }
 
@@ -974,6 +979,14 @@ pub(crate) fn leave_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
                 .chain(node.children.iter().copied())
                 .chain(node.after()),
         );
+    }
+}
+
+/// The children of an element laid out as a leaf (a form control or a replaced
+/// element), whose children are not rendered, get no box.
+fn leave_children_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
+    for child_id in doc.nodes[node_id].children.clone() {
+        leave_out_of_layout(doc, child_id);
     }
 }
 

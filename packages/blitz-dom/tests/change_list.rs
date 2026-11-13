@@ -881,3 +881,30 @@ fn a_child_the_table_leaves_out_reads_as_on_a_fresh_page() {
         reads(&["display: block"])
     );
 }
+
+/// An element laid out as a leaf (a form control or a replaced element) gives its
+/// children no box. A block laid out elsewhere and then moved into one must read as on
+/// a page where it was put there from the start.
+#[test]
+fn a_block_moved_into_a_leaf_element_reads_as_on_a_fresh_page() {
+    let read = |tag: &str, lay_out_before_moving: bool| {
+        let (mut doc, body) = page("");
+        let leaf = create(&mut doc, tag);
+        append(&mut doc, body, leaf);
+        let block = div(&mut doc, body, "", "text");
+        if lay_out_before_moving {
+            doc.resolve(0.0);
+        }
+        append(&mut doc, leaf, block);
+        doc.resolve(0.0);
+        let rect = doc.get_client_bounding_rect(block).unwrap();
+        (rect.x, rect.y, rect.width, rect.height)
+    };
+    let differ: Vec<_> = [
+        "img", "video", "canvas", "iframe", "embed", "svg", "textarea", "input",
+    ]
+    .into_iter()
+    .filter(|tag| read(tag, true) != read(tag, false))
+    .collect();
+    assert!(differ.is_empty(), "kept and fresh differ for {differ:?}");
+}
