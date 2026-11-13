@@ -28,6 +28,7 @@ use taffy::{
 use crate::BaseDocument;
 use crate::layout::LayoutPassState;
 
+use super::construct::leave_out_of_layout;
 use super::damage::{CONSTRUCT_BOX, CONSTRUCT_DESCENDENT, CONSTRUCT_FC};
 use super::resolve_calc_value;
 
@@ -530,6 +531,7 @@ fn collect_table_cells(
     let node = &mut doc.nodes[node_id];
 
     if !node.is_element() {
+        leave_out_of_layout(doc, node_id);
         return;
     }
 
@@ -541,6 +543,7 @@ fn collect_table_cells(
 
     if display.outside() == DisplayOutside::None {
         node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+        leave_out_of_layout(doc, node_id);
         return;
     }
 
@@ -747,14 +750,17 @@ fn collect_table_cells(
             //     "Warning: ignoring non-table typed descendent of table ({:?})",
             //     display.inside()
             // );
+            leave_out_of_layout(doc, node_id);
         }
         DisplayInside::TableColumnGroup | DisplayInside::TableColumn | DisplayInside::Table => {
             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
             //Ignore
+            leave_out_of_layout(doc, node_id);
         }
         DisplayInside::None => {
             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
             // Ignore
+            leave_out_of_layout(doc, node_id);
         }
     }
 }

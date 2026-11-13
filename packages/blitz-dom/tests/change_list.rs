@@ -851,3 +851,33 @@ fn removing_many_boxes_of_one_container_stays_linear() {
         "removing {count} boxes from one container's lists took {shared:?}, from lists of their own {own:?}"
     );
 }
+
+/// A table builds no box for a child that is not a table part. A block laid out before
+/// its container became a table, and an inline element in it, must read as on a page
+/// where the container was a table from the start, and as on a fresh page once the
+/// container is a block again.
+#[test]
+fn a_child_the_table_leaves_out_reads_as_on_a_fresh_page() {
+    let reads = |styles: &[&str]| {
+        let (mut doc, body) = page("");
+        let container = div(&mut doc, body, "", "");
+        let block = div(&mut doc, container, "", "text ");
+        let span = create(&mut doc, "span");
+        let text = doc.mutate().create_text_node("inline");
+        append(&mut doc, span, text);
+        append(&mut doc, block, span);
+        for style in styles {
+            doc.mutate().set_attribute(container, attr("style"), style);
+            doc.resolve(0.0);
+        }
+        [block, span].map(|node| {
+            let rect = doc.get_client_bounding_rect(node).unwrap();
+            (rect.x, rect.y, rect.width, rect.height)
+        })
+    };
+    assert_eq!(reads(&["", "display: table"]), reads(&["display: table"]));
+    assert_eq!(
+        reads(&["", "display: table", "display: block"]),
+        reads(&["display: block"])
+    );
+}
