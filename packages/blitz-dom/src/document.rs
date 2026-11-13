@@ -900,7 +900,45 @@ impl BaseDocument {
     /// it so that stale NodeIds are never dereferenced after the slot is freed.
     pub(crate) fn remove_node_from_tree(&mut self, node_id: NodeId) -> Option<Node> {
         self.clear_interaction_state_for_removed_node(node_id);
+        self.unlink_removed_node_from_layout(node_id);
         self.nodes.remove(node_id)
+    }
+
+    /// Remove `node_id`, which is being removed from the slab, from the layout lists that
+    /// name it (its layout parent's `layout_children` and its containing block's
+    /// `hoisted_children`), and clear the back-pointers of the boxes it lists. A container
+    /// that is not reconstructed or laid out again before the next layout pass (one in a
+    /// `display: none` subtree) would otherwise hand layout a freed key.
+    fn unlink_removed_node_from_layout(&self, node_id: NodeId) {
+        let Some(node) = self.nodes.get(node_id) else {
+            return;
+        };
+        if let Some(parent) = node.layout_parent.get().and_then(|id| self.nodes.get(id)) {
+            if let Some(children) = parent.layout_children.borrow_mut().as_mut() {
+                children.retain(|id| *id != node_id);
+            }
+        }
+        if let Some(cb) = node
+            .oof_containing_block
+            .get()
+            .and_then(|id| self.nodes.get(id))
+        {
+            cb.hoisted_children.borrow_mut().retain(|id| *id != node_id);
+        }
+        for &child_id in node.layout_children.borrow().iter().flatten() {
+            if let Some(child) = self.nodes.get(child_id) {
+                if child.layout_parent.get() == Some(node_id) {
+                    child.layout_parent.set(None);
+                }
+            }
+        }
+        for &hoisted_id in node.hoisted_children.borrow().iter() {
+            if let Some(hoisted) = self.nodes.get(hoisted_id) {
+                if hoisted.oof_containing_block.get() == Some(node_id) {
+                    hoisted.oof_containing_block.set(None);
+                }
+            }
+        }
     }
 
     /// The nearest element ancestor of `node_id` that is still in the

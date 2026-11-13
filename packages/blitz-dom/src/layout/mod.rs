@@ -192,8 +192,16 @@ impl LayoutPassState<'_> {
         block_ctx: Option<&mut BlockContext<'_>>,
     ) -> taffy::tree::LayoutOutput {
         let mut output = self.dispatch_child_layout(node_id, inputs, block_ctx);
-        if inputs.run_mode == RunMode::PerformLayout {
-            compute_oof_layout(self, node_id, &mut output);
+        match inputs.run_mode {
+            RunMode::PerformLayout if output.oof_positioning_area.is_some() => {
+                compute_oof_layout(self, node_id, &mut output);
+            }
+            // A box laid out without a positioning area (`display: none`, or a leaf) is the
+            // containing block of nothing: forget the boxes it hoisted when it last was one.
+            RunMode::PerformLayout | RunMode::PerformHiddenLayout => {
+                self.clear_hoisted_children(node_id);
+            }
+            RunMode::ComputeSize => {}
         }
         output
     }

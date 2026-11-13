@@ -75,6 +75,88 @@ fn div(doc: &mut BaseDocument, parent: NodeId, classes: &str, text: &str) -> Nod
     id
 }
 
+const HOISTING: &str = ".cb { position: relative } .cb.before::before { content: \"\"; position: absolute } .abs { position: absolute } .hidden { display: none } .ib { display: inline-block } .table { display: table }";
+
+/// outer > cb (with an absolutely positioned ::before) > (box, absolutely positioned; flow, a paragraph).
+fn hoisting() -> (BaseDocument, [NodeId; 5]) {
+    let (mut doc, body) = page(HOISTING);
+    let outer = div(&mut doc, body, "", "");
+    let cb = div(&mut doc, outer, "cb before", "");
+    let b = div(&mut doc, cb, "abs", "x");
+    let flow = create(&mut doc, "p");
+    let y = doc.mutate().create_text_node("y");
+    append(&mut doc, flow, y);
+    append(&mut doc, cb, flow);
+    doc.resolve(0.0);
+    (doc, [body, outer, cb, b, flow])
+}
+
+#[test]
+fn a_hidden_containing_block_lets_go_of_its_hoisted_boxes() {
+    let (mut doc, [_, _, cb, b, _]) = hoisting();
+    assert_eq!(doc.get_node(cb).unwrap().hoisted_children.borrow().len(), 2);
+    set_class(&mut doc, cb, "cb before hidden");
+    doc.resolve(0.0);
+    assert!(
+        doc.get_node(cb)
+            .unwrap()
+            .hoisted_children
+            .borrow()
+            .is_empty()
+    );
+    assert_eq!(doc.get_node(b).unwrap().oof_containing_block.get(), None);
+}
+
+#[test]
+fn a_pseudo_element_dropped_while_its_containing_block_is_hidden() {
+    let (mut doc, [_, _, cb, _, _]) = hoisting();
+    set_class(&mut doc, cb, "cb before hidden");
+    doc.resolve(0.0);
+    set_class(&mut doc, cb, "cb hidden");
+    doc.resolve(0.0);
+}
+
+#[test]
+fn a_box_removed_while_its_containing_block_is_hidden() {
+    let (mut doc, [_, _, cb, b, _]) = hoisting();
+    set_class(&mut doc, cb, "cb before hidden");
+    doc.resolve(0.0);
+    remove(&mut doc, b);
+    doc.resolve(0.0);
+}
+
+#[test]
+fn a_box_removed_inside_a_hidden_ancestor() {
+    let (mut doc, [_, outer, _, b, _]) = hoisting();
+    set_class(&mut doc, outer, "hidden");
+    doc.resolve(0.0);
+    remove(&mut doc, b);
+    doc.resolve(0.0);
+}
+
+#[test]
+fn an_in_flow_child_removed_inside_a_hidden_ancestor() {
+    let (mut doc, [_, outer, _, _, flow]) = hoisting();
+    set_class(&mut doc, outer, "hidden");
+    doc.resolve(0.0);
+    remove(&mut doc, flow);
+    doc.resolve(0.0);
+}
+
+#[test]
+fn a_containing_block_removed_after_its_box_moved_out() {
+    let (mut doc, [body, _, cb, b, _]) = hoisting();
+    append(&mut doc, body, b);
+    remove(&mut doc, cb);
+    assert!(
+        doc.get_node(b)
+            .unwrap()
+            .containing_block()
+            .is_none_or(|id| doc.get_node(id).is_some())
+    );
+    doc.resolve(0.0);
+}
+
 const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";
 
 const FUZZ_CLASSES: [&str; 16] = [
