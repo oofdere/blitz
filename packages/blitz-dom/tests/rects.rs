@@ -52,3 +52,83 @@ fn a_block_is_as_wide_as_the_viewport() {
     doc.resolve(0.0);
     assert_eq!(rect(&doc, node), (0.0, 0.0, 800.0, 10.0));
 }
+
+#[test]
+fn a_translated_box() {
+    let (mut doc, body) = page();
+    let node = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 100px; height: 50px; transform: translate(10px, 20px)",
+        "",
+    );
+    doc.resolve(0.0);
+    assert_eq!(rect(&doc, node), (10.0, 20.0, 100.0, 50.0));
+}
+
+#[test]
+fn a_scaled_box() {
+    let (mut doc, body) = page();
+    let node = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 100px; height: 50px; transform: scale(2)",
+        "",
+    );
+    doc.resolve(0.0);
+    assert_eq!(rect(&doc, node), (-50.0, -25.0, 200.0, 100.0));
+}
+
+#[test]
+fn a_rotated_box() {
+    let (mut doc, body) = page();
+    let node = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 100px; height: 50px; transform: rotate(90deg)",
+        "",
+    );
+    doc.resolve(0.0);
+    assert_eq!(rect(&doc, node), (25.0, -25.0, 50.0, 100.0));
+}
+
+#[test]
+fn the_child_of_a_translated_box() {
+    let (mut doc, body) = page();
+    let parent = element(
+        &mut doc,
+        body,
+        "div",
+        "transform: translate(10px, 20px)",
+        "",
+    );
+    let node = element(&mut doc, parent, "div", "width: 30px; height: 10px", "");
+    doc.resolve(0.0);
+    assert_eq!(rect(&doc, node), (10.0, 20.0, 30.0, 10.0));
+}
+
+#[test]
+fn an_inline_element_in_a_translated_box() {
+    let (mut doc, body) = page();
+    let parent = element(
+        &mut doc,
+        body,
+        "div",
+        "transform: translate(10px, 20px)",
+        "",
+    );
+    let node = element(&mut doc, parent, "span", "", "abc");
+    doc.resolve(0.0);
+    let untransformed = {
+        let (mut doc, body) = page();
+        let parent = element(&mut doc, body, "div", "", "");
+        let node = element(&mut doc, parent, "span", "", "abc");
+        doc.resolve(0.0);
+        rect(&doc, node)
+    };
+    let (x, y, width, height) = untransformed;
+    assert_eq!(rect(&doc, node), (x + 10.0, y + 20.0, width, height));
+}

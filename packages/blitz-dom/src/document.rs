@@ -2508,16 +2508,49 @@ impl BaseDocument {
             return rects.reduce(BoundingRect::union);
         }
 
-        self.get_node(node_id)?;
-        let (pos, layout) = self.physical_unrounded_geometry(node_id);
-        let size = layout.size;
+        let size = self.get_node(node_id)?.unrounded_layout().size;
+        let border_box = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
+        Some(self.bounding_rect_in_viewport(node_id, border_box, true))
+    }
 
-        Some(BoundingRect {
-            x: snap_to_layout_unit(pos.x as f64 - self.viewport_scroll().x),
-            y: snap_to_layout_unit(pos.y as f64 - self.viewport_scroll().y),
-            width: snap_to_layout_unit(size.width as f64),
-            height: snap_to_layout_unit(size.height as f64),
-        })
+    /// The bounding box, in viewport coordinates, of `rect` given in the coordinates of
+    /// `node_id`'s border box: through the position, scroll offset and `transform` of the
+    /// node and of each of its containing blocks, as CSSOM View's `getBoundingClientRect`.
+    /// Without `transforms`, as the `offset*` attributes, which ignore them.
+    fn bounding_rect_in_viewport(
+        &self,
+        node_id: NodeId,
+        rect: kurbo::Rect,
+        transforms: bool,
+    ) -> BoundingRect {
+        let scale = self.viewport.scale_f64();
+        let mut to_viewport = kurbo::Affine::IDENTITY;
+        let mut current = Some(node_id);
+        while let Some(id) = current {
+            let node = &self.nodes[id];
+            let location = node.unrounded_layout().location;
+            let scroll = node.scroll_offset();
+            let mut to_parent = kurbo::Affine::translate((
+                location.x as f64 - scroll.x,
+                location.y as f64 - scroll.y,
+            ));
+            if let Some(transform) = node.transform().as_deref().filter(|_| transforms) {
+                // Stored in device pixels (S * T * S^-1): back to CSS pixels.
+                to_parent *=
+                    kurbo::Affine::scale(1.0 / scale) * *transform * kurbo::Affine::scale(scale);
+            }
+            to_viewport = to_parent * to_viewport;
+            current = node.containing_block();
+        }
+        let scroll = self.viewport_scroll();
+        let bounds = (kurbo::Affine::translate((-scroll.x, -scroll.y)) * to_viewport)
+            .transform_rect_bbox(rect);
+        BoundingRect {
+            x: snap_to_layout_unit(bounds.x0),
+            y: snap_to_layout_unit(bounds.y0),
+            width: snap_to_layout_unit(bounds.width()),
+            height: snap_to_layout_unit(bounds.height()),
+        }
     }
 
     /// CSSOM View's `offsetLeft`/`offsetTop`/`offsetWidth`/`offsetHeight` as a single rect:
@@ -2532,7 +2565,7 @@ impl BaseDocument {
         let node = self.get_node(node_id)?;
 
         // Nodes with their own layout box: use it directly
-        let Some(rects) = self.inline_fragment_rects(node_id) else {
+        let Some(rects) = self.inline_fragment_rects_in_viewport(node_id, false) else {
             let pos = node.offset_top_left();
             let size = node.unrounded_layout().size;
             #[cfg(feature = "writing-mode")]
@@ -2599,6 +2632,14 @@ impl BaseDocument {
         &self,
         node_id: NodeId,
     ) -> Option<impl Iterator<Item = BoundingRect> + '_> {
+        self.inline_fragment_rects_in_viewport(node_id, true)
+    }
+
+    fn inline_fragment_rects_in_viewport(
+        &self,
+        node_id: NodeId,
+        transforms: bool,
+    ) -> Option<impl Iterator<Item = BoundingRect> + '_> {
         let node = self.get_node(node_id)?;
 
         // Only non-atomic inline elements lack their own layout box: they are
@@ -2607,15 +2648,15 @@ impl BaseDocument {
         let inline_root = node.inline_root_ancestor()?;
 
         // Fragment boxes are relative to the inline root's border box.
-        let (root_pos, _) = self.physical_unrounded_geometry(inline_root.id);
-        let origin_x = root_pos.x as f64 - self.viewport_scroll().x;
-        let origin_y = root_pos.y as f64 - self.viewport_scroll().y;
-
-        Some(fragments.map(move |rect| BoundingRect {
-            x: snap_to_layout_unit(origin_x + rect.left as f64),
-            y: snap_to_layout_unit(origin_y + rect.top as f64),
-            width: snap_to_layout_unit((rect.right - rect.left) as f64),
-            height: snap_to_layout_unit((rect.bottom - rect.top) as f64),
+        let inline_root_id = inline_root.id;
+        Some(fragments.map(move |rect| {
+            let rect = kurbo::Rect::new(
+                rect.left as f64,
+                rect.top as f64,
+                rect.right as f64,
+                rect.bottom as f64,
+            );
+            self.bounding_rect_in_viewport(inline_root_id, rect, transforms)
         }))
     }
 
