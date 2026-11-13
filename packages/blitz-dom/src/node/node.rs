@@ -1710,7 +1710,7 @@ impl Node {
                 return Some(node);
             }
             let id = node.layout_parent.get()?;
-            node = self.with(id);
+            node = self.tree().get(id)?;
         }
     }
 
@@ -1855,7 +1855,7 @@ impl Node {
                 if id == inline_root_id {
                     return false;
                 }
-                match self.with(id).parent {
+                match self.tree().get(id).and_then(|node| node.parent) {
                     Some(parent) => id = parent,
                     None => return false,
                 }

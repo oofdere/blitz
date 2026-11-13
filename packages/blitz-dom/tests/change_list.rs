@@ -686,6 +686,35 @@ fn a_read_after_its_anonymous_block_is_freed() {
     assert!(panicked.is_empty(), "panicked for {panicked:?}");
 }
 
+/// A table builds no box for a child that is not a table part, so a block in a table
+/// has none. Under it, an inline element whose flow held another one is read after
+/// that one is removed, and again once the table is a block again.
+#[test]
+fn a_read_under_a_child_the_table_leaves_out() {
+    let (mut doc, body) = page("");
+    let container = div(&mut doc, body, "", "");
+    let block = div(&mut doc, container, "", "");
+    let outer = create(&mut doc, "span");
+    let text = doc.mutate().create_text_node("tail ");
+    append(&mut doc, outer, text);
+    append(&mut doc, block, outer);
+    let inner = create(&mut doc, "span");
+    let inner_text = doc.mutate().create_text_node("hello world");
+    append(&mut doc, inner, inner_text);
+    doc.mutate().insert_nodes_before(text, &[inner]);
+    div(&mut doc, block, "", "");
+    doc.resolve(0.0);
+    doc.mutate()
+        .set_attribute(container, attr("style"), "display: table");
+    remove(&mut doc, inner);
+    doc.resolve(0.0);
+    let _ = doc.get_client_bounding_rect(outer);
+    doc.mutate().clear_attribute(container, attr("style"));
+    doc.resolve(0.0);
+    let _ = doc.get_client_bounding_rect(outer);
+    assert_layout_lists_consistent(&doc);
+}
+
 /// A replaced element is laid out as a leaf whatever its `display`, even with children.
 #[test]
 fn a_replaced_element_with_a_child_laid_out_as_any_display() {
