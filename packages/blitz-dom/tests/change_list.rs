@@ -656,6 +656,37 @@ fn an_element_whose_text_changed_taken_out_with_one_mutator() {
     assert!(panicked.is_empty(), "panicked for {panicked:?}");
 }
 
+/// A replaced element is laid out as a leaf whatever its `display`, even with children.
+#[test]
+fn a_replaced_element_with_a_child_laid_out_as_any_display() {
+    let mut panicked = Vec::new();
+    for tag in ["img", "canvas", "video", "embed", "iframe"] {
+        for display in [
+            "block",
+            "table",
+            "inline-table",
+            "flex",
+            "grid",
+            "list-item",
+        ] {
+            let failed = catch_unwind(AssertUnwindSafe(|| {
+                let (mut doc, body) = page("");
+                let element = create(&mut doc, tag);
+                doc.mutate()
+                    .set_attribute(element, attr("style"), &format!("display: {display}"));
+                div(&mut doc, element, "", "t");
+                append(&mut doc, body, element);
+                doc.resolve(0.0);
+            }))
+            .is_err();
+            if failed {
+                panicked.push(format!("{tag} {display}"));
+            }
+        }
+    }
+    assert!(panicked.is_empty(), "panicked for {panicked:?}");
+}
+
 /// A `display: contents` element with a `::before` sits in a flex container, so its
 /// pseudo-element and its text are boxes in the container's list. The container is
 /// hidden, so construction skips it, and the element moves out and gets a new child.

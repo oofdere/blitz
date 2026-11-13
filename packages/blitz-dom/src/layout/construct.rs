@@ -482,6 +482,16 @@ fn collect_layout_children_with_wrap(
             return;
         }
 
+        // A replaced element is laid out as a leaf, whatever its `display`, and its
+        // children are not rendered. Building them a table (or any other box) would
+        // overwrite the element's own data with the table's.
+        if crate::layout::replaced::is_replaced_element(&el.name.local) {
+            doc.iter_subtree_mut(container_node_id, |id: NodeId, doc: &mut BaseDocument| {
+                doc.nodes[id].remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
+            });
+            return;
+        }
+
         //Only ol tags have start and reversed attributes
         let (mut index, reversed) = if tag_name == "ol" {
             (
