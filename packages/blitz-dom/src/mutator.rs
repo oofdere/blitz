@@ -897,8 +897,11 @@ impl DocumentMutator<'_> {
             self.doc.take_out_of_layout_parent(child_id);
             // Into a parent with no box (one in a `display: none` subtree, or never built),
             // the child is not reached by construction, and its own changes there are
-            // not seen: it lets go of its box, to be built when it is reached again.
-            if self.doc.nodes[parent_id].layout_children.borrow().is_none() {
+            // not seen: it lets go of its box, to be built when it is reached again. A
+            // parent laid out in an inline flow has no list of its own either, but has a
+            // layout parent, and construction reaches it.
+            let parent = &self.doc.nodes[parent_id];
+            if parent.layout_children.borrow().is_none() && parent.layout_parent.get().is_none() {
                 leave_out_of_layout(self.doc, child_id);
             }
 
@@ -1671,6 +1674,46 @@ mod test {
 
     use super::{DocumentMutator, NodeId};
     use crate::{Attribute, BaseDocument, DocumentConfig, ElementData, NodeData, qual_name};
+
+    /// A block moved into a span laid out in a paragraph's inline flow: the span has no
+    /// list of layout children of its own, but construction reaches it, so the block
+    /// keeps its layout and its layout cache.
+    #[test]
+    fn a_block_moved_into_a_shown_inline_element_keeps_its_layout() {
+        let mut document = BaseDocument::new(DocumentConfig {
+            ua_stylesheets: vec![crate::UserAgentStylesheet::parse(
+                "html, body, div, p { display: block }",
+            )],
+            ..DocumentConfig::default()
+        });
+        let root_id = document.root_node().id;
+        let mut mutator = document.mutate();
+        let html = mutator.create_element(qual_name!("html"), vec![]);
+        let body = mutator.create_element(qual_name!("body"), vec![]);
+        let block = mutator.create_element(qual_name!("div"), vec![]);
+        let text = mutator.create_text_node("text");
+        let paragraph = mutator.create_element(qual_name!("p"), vec![]);
+        let span = mutator.create_element(qual_name!("span"), vec![]);
+        let words = mutator.create_text_node("words");
+        mutator.append_children(block, &[text]);
+        mutator.append_children(span, &[words]);
+        mutator.append_children(paragraph, &[span]);
+        mutator.append_children(body, &[block, paragraph]);
+        mutator.append_children(html, &[body]);
+        mutator.append_children(root_id, &[html]);
+        drop(mutator);
+        document.resolve(0.0);
+        assert!(document.nodes[span].layout_children.borrow().is_none());
+
+        document.mutate().append_children(span, &[block]);
+        assert!(
+            document.nodes[block]
+                .element_data()
+                .unwrap()
+                .layout_data
+                .is_some()
+        );
+    }
 
     #[test]
     fn unresolvable_relative_urls_are_skipped() {
