@@ -916,13 +916,32 @@ impl BaseDocument {
     /// `layout_children`. The old parent is built again when construction next
     /// reaches it, but one that construction skips (in a `display: none` subtree)
     /// would otherwise keep listing a box that now belongs to another container.
-    pub(crate) fn take_out_of_layout_parent(&self, node_id: NodeId) {
-        let node = &self.nodes[node_id];
-        let Some(parent) = node.layout_parent.take().and_then(|id| self.nodes.get(id)) else {
-            return;
-        };
-        if let Some(children) = parent.layout_children.borrow_mut().as_mut() {
-            children.retain(|id| *id != node_id);
+    /// The same holds for every node under it whose layout parent is outside it: the
+    /// children and pseudo-elements of a `display: contents` element, and the boxes of
+    /// an inline element, are listed by an ancestor's box. The lists themselves are
+    /// swept before the next construction.
+    pub(crate) fn take_out_of_layout_parent(&mut self, node_id: NodeId) {
+        let mut inside = HashSet::new();
+        let mut stack = vec![node_id];
+        while let Some(id) = stack.pop() {
+            inside.insert(id);
+            let node = &self.nodes[id];
+            if let Some(parent_id) = node.layout_parent.get() {
+                let parent_is_inside = inside.contains(&parent_id)
+                    || self.nodes.get(parent_id).is_some_and(|parent| {
+                        parent.is_anonymous() && parent.parent.is_some_and(|p| inside.contains(&p))
+                    });
+                if !parent_is_inside {
+                    node.layout_parent.set(None);
+                    self.layout_lists_to_sweep.insert(parent_id);
+                }
+            }
+            stack.extend(
+                node.before()
+                    .into_iter()
+                    .chain(node.children.iter().copied())
+                    .chain(node.after()),
+            );
         }
     }
 
@@ -954,14 +973,19 @@ impl BaseDocument {
         );
     }
 
-    /// Drop the freed boxes from `owner`'s `layout_children` and `hoisted_children`. A
-    /// freed `NodeId` never resolves again, so whatever no longer resolves is freed.
-    fn sweep_freed_from_layout_lists(&self, owner: NodeId) {
-        let Some(owner) = self.nodes.get(owner) else {
+    /// Drop from `owner`'s `layout_children` the boxes that left it (freed, or whose
+    /// `layout_parent` no longer names it), and from its `hoisted_children` the freed
+    /// ones. A freed `NodeId` never resolves again.
+    fn sweep_layout_lists_of(&self, owner_id: NodeId) {
+        let Some(owner) = self.nodes.get(owner_id) else {
             return;
         };
         if let Some(children) = owner.layout_children.borrow_mut().as_mut() {
-            children.retain(|id| self.nodes.contains_key(*id));
+            children.retain(|id| {
+                self.nodes
+                    .get(*id)
+                    .is_some_and(|child| child.layout_parent.get() == Some(owner_id))
+            });
         }
         owner
             .hoisted_children
@@ -972,7 +996,7 @@ impl BaseDocument {
     /// Drop the freed boxes from the layout lists recorded since the last sweep.
     pub(crate) fn sweep_layout_lists(&mut self) {
         for owner in std::mem::take(&mut self.layout_lists_to_sweep) {
-            self.sweep_freed_from_layout_lists(owner);
+            self.sweep_layout_lists_of(owner);
         }
     }
 

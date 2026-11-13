@@ -595,6 +595,45 @@ fn a_box_whose_containing_block_becomes_contents_is_in_one_hoisted_list() {
     assert_hoisted_lists_consistent(&doc);
 }
 
+/// A `display: contents` element with a `::before` sits in a flex container, so its
+/// pseudo-element and its text are boxes in the container's list. The container is
+/// hidden, so construction skips it, and the element moves out and gets a new child.
+#[test]
+fn a_contents_element_moved_out_of_a_hidden_container_takes_its_boxes() {
+    let (mut doc, body) = page(FUZZ_CSS);
+    let hidden = div(&mut doc, body, "dn", "t");
+    let flex = div(&mut doc, body, "", "t");
+    let contents = div(&mut doc, flex, "bs dc", "t");
+    let flex_text = doc.get_node(flex).unwrap().children[0];
+    doc.mutate().insert_nodes_before(flex_text, &[contents]);
+    doc.resolve(0.0);
+    set_class(&mut doc, flex, "fl");
+    doc.resolve(0.0);
+    append(&mut doc, hidden, flex);
+    append(&mut doc, body, contents);
+    let contents_text = doc.get_node(contents).unwrap().children[0];
+    let child = create(&mut doc, "div");
+    doc.mutate().insert_nodes_before(contents_text, &[child]);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+}
+
+/// An inline element holds an inline-block, which is a box in the list of the block
+/// whose inline flow they are in. The block is hidden, and the inline element moves out.
+#[test]
+fn an_inline_element_moved_out_of_a_hidden_container_takes_its_boxes() {
+    let (mut doc, body) = page(FUZZ_CSS);
+    let hidden = div(&mut doc, body, "dn", "t");
+    let block = div(&mut doc, body, "", "t");
+    let inline = div(&mut doc, block, "di", "t");
+    div(&mut doc, inline, "dib", "t");
+    doc.resolve(0.0);
+    append(&mut doc, hidden, block);
+    append(&mut doc, body, inline);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+}
+
 /// Remove `count` absolutely positioned boxes one by one through one mutator, as niso
 /// does, and lay out again. Each box sits in its own wrapper of `wrapper_class` inside one
 /// containing block: a `display: contents` wrapper leaves every box in the containing
