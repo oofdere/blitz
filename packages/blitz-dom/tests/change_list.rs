@@ -91,6 +91,25 @@ fn hoisting() -> (BaseDocument, [NodeId; 5]) {
     (doc, [body, outer, cb, b, flow])
 }
 
+/// Every box a container in the document lists points back at it, and is in the slab.
+fn assert_layout_lists_consistent(doc: &BaseDocument) {
+    for (container, node) in doc.tree().iter() {
+        if !node.flags.is_in_document() {
+            continue;
+        }
+        for &child in node.layout_children.borrow().iter().flatten() {
+            let Some(child_node) = doc.get_node(child) else {
+                panic!("{container:?} lists {child:?}, which has been freed");
+            };
+            assert_eq!(
+                child_node.layout_parent.get(),
+                Some(container),
+                "{container:?} lists {child:?}, whose layout parent is another box"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_hidden_containing_block_lets_go_of_its_hoisted_boxes() {
     let (mut doc, [_, _, cb, b, _]) = hoisting();
@@ -216,6 +235,43 @@ fn an_inline_root_changed_while_a_table_skips_it_is_rebuilt_after() {
     doc.resolve(0.0);
     set_class(&mut doc, outer, "");
     doc.resolve(0.0);
+}
+
+/// An element made inline after it held a block, laid out, then left with
+/// inline content only, has no box of its own: it lists no layout children.
+#[test]
+fn an_inline_element_that_held_a_block_lets_go_of_its_layout_children() {
+    let (mut doc, body) =
+        page(".di { display: inline } .bf::before { content: \"b\"; position: absolute }");
+    let inline = div(&mut doc, body, "", "t");
+    let block = div(&mut doc, inline, "", "t");
+    set_class(&mut doc, inline, "di bf");
+    doc.resolve(0.0);
+    remove(&mut doc, block);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+    assert!(
+        doc.get_node(inline)
+            .unwrap()
+            .layout_children
+            .borrow()
+            .is_none()
+    );
+}
+
+/// The same when the block moves out instead: the anonymous blocks the
+/// element made around its content while it held the block are freed.
+#[test]
+fn an_inline_element_whose_block_moved_out_frees_its_anonymous_blocks() {
+    let (mut doc, body) = page(".di { display: inline }");
+    let inline = div(&mut doc, body, "", "t");
+    let block = div(&mut doc, inline, "", "t");
+    set_class(&mut doc, inline, "di");
+    doc.resolve(0.0);
+    append(&mut doc, body, block);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+    assert!(doc.get_node(inline).unwrap().anonymous_blocks.is_empty());
 }
 
 const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";

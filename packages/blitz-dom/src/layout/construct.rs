@@ -949,14 +949,31 @@ pub(crate) fn find_inline_layout_embedded_boxes(
 ) {
     flush_inline_pseudos_recursive(doc, inline_context_root_node_id);
 
+    let mut boxless = Vec::new();
     iter_children_and_pseudos!(doc.nodes[inline_context_root_node_id], |child_id| {
         find_inline_layout_embedded_boxes_recursive(
             &mut doc.nodes,
             inline_context_root_node_id,
             child_id,
             layout_children,
+            &mut boxless,
         );
     });
+
+    // An element laid out in this flow has no box of its own. One that had one before
+    // (a block, or an inline box holding blocks) lets go of what that box kept: its
+    // anonymous blocks, which construction would otherwise never free, and its list of
+    // layout children, which names boxes that now belong to other containers.
+    for node_id in boxless {
+        let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
+        for anon_id in anonymous_blocks {
+            doc.deallocate_anonymous_block(anon_id);
+        }
+        let node = &mut doc.nodes[node_id];
+        *node.layout_children.get_mut() = None;
+        node.flags
+            .remove(NodeFlags::IS_INLINE_WITH_ONLY_BLOCK_CHILDREN);
+    }
 
     fn flush_inline_pseudos_recursive(doc: &mut BaseDocument, node_id: NodeId) {
         doc.iter_children_mut(node_id, |child_id, doc| {
@@ -975,11 +992,21 @@ pub(crate) fn find_inline_layout_embedded_boxes(
         });
     }
 
+    /// Whether an element that is now laid out in its inline formatting context's
+    /// flow still has what it kept when it had a box of its own (as a block, or as an
+    /// inline box holding blocks): a list of layout children and anonymous blocks.
+    fn kept_a_box(node: &Node) -> bool {
+        node.layout_children.borrow().is_some()
+            || !node.anonymous_blocks.is_empty()
+            || node.is_inline_with_only_block_children()
+    }
+
     fn find_inline_layout_embedded_boxes_recursive(
         nodes: &mut crate::NodeTree,
         parent_id: NodeId,
         node_id: NodeId,
         layout_children: &mut ThinVec<NodeId>,
+        boxless: &mut Vec<NodeId>,
     ) {
         let node = &mut nodes[node_id];
 
@@ -1000,15 +1027,22 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                 match (display.outside(), display.inside()) {
                     (DisplayOutside::None, DisplayInside::None) => {
                         node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+                        if kept_a_box(node) {
+                            boxless.push(node_id);
+                        }
                     }
                     (DisplayOutside::None, DisplayInside::Contents) => {
                         node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+                        if kept_a_box(node) {
+                            boxless.push(node_id);
+                        }
                         iter_children!(nodes[node_id], |child_id| {
                             find_inline_layout_embedded_boxes_recursive(
                                 nodes,
                                 parent_id,
                                 child_id,
                                 layout_children,
+                                boxless,
                             );
                         });
                     }
@@ -1019,14 +1053,21 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                             layout_children.push(node_id);
                         } else if *tag_name == local_name!("br") {
                             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+                            if kept_a_box(node) {
+                                boxless.push(node_id);
+                            }
                         } else {
                             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+                            if kept_a_box(node) {
+                                boxless.push(node_id);
+                            }
                             iter_children_and_pseudos!(nodes[node_id], |child_id| {
                                 find_inline_layout_embedded_boxes_recursive(
                                     nodes,
                                     node_id,
                                     child_id,
                                     layout_children,
+                                    boxless,
                                 );
                             });
                         }
