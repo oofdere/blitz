@@ -511,20 +511,26 @@ fn collect_layout_children_with_wrap(
         collect_list_item_children(doc, &mut index, reversed, container_node_id);
     }
 
-    // Skip further construction if the node has no children or psuedo-children
-    {
-        let node = &doc.nodes[container_node_id];
-        if node.children.is_empty() && node.before().is_none() && node.after().is_none() {
-            return;
-        }
-    }
-
     let container_display = doc.nodes[container_node_id].display_style().unwrap_or(
         match doc.nodes[container_node_id].data.kind() {
             NodeKind::AnonymousBlock => Display::Block,
             _ => Display::Inline,
         },
     );
+
+    // Skip further construction if the node has no children or psuedo-children. A
+    // display: contents node still lets go of its box: the pseudo-element just
+    // flushed may have been its last layout child.
+    {
+        let node = &doc.nodes[container_node_id];
+        if node.children.is_empty()
+            && node.before().is_none()
+            && node.after().is_none()
+            && container_display.inside() != DisplayInside::Contents
+        {
+            return;
+        }
+    }
 
     match container_display.inside() {
         DisplayInside::None => leave_children_out_of_layout(doc, container_node_id),

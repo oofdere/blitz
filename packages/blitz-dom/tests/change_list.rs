@@ -580,6 +580,30 @@ fn contents_inside_contents() {
     assert_layout_lists_consistent(&doc);
 }
 
+/// A block with no children and an absolutely positioned ::before, which is one
+/// of its layout children, becomes display: contents and loses the ::before in the
+/// same restyle. The ::before is freed, and the element, which has no box now,
+/// lists no layout children.
+#[test]
+fn an_empty_block_that_becomes_contents_without_its_before() {
+    let (mut doc, body) =
+        page(".before::before { content: \"b\"; position: absolute } .dc { display: contents }");
+    let element = create(&mut doc, "div");
+    set_class(&mut doc, element, "before");
+    append(&mut doc, body, element);
+    doc.resolve(0.0);
+    set_class(&mut doc, element, "dc");
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+    assert!(
+        doc.get_node(element)
+            .unwrap()
+            .layout_children
+            .borrow()
+            .is_none()
+    );
+}
+
 /// An absolutely positioned box whose containing block becomes display: contents
 /// is claimed by the next containing block up, and leaves the hoisted list of the
 /// first one, which is not laid out again: a box is in one hoisted list at most,
