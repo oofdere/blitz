@@ -1020,6 +1020,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
     flush_inline_pseudos_recursive(doc, inline_context_root_node_id);
 
     let mut boxless = Vec::new();
+    let mut hidden = Vec::new();
     iter_children_and_pseudos!(doc.nodes[inline_context_root_node_id], |child_id| {
         find_inline_layout_embedded_boxes_recursive(
             &mut doc.nodes,
@@ -1027,6 +1028,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
             child_id,
             layout_children,
             &mut boxless,
+            &mut hidden,
         );
     });
 
@@ -1036,6 +1038,13 @@ pub(crate) fn find_inline_layout_embedded_boxes(
     // layout children, which names boxes that now belong to other containers.
     for node_id in boxless {
         let_go_of_own_box(doc, node_id);
+    }
+
+    // Nothing under a display: none element in this flow has a box, as in a block
+    // container's construction: what was built there before lets go of it, so that
+    // a box moved in later lets go of its own, and all of it is built when shown.
+    for node_id in hidden {
+        leave_children_out_of_layout(doc, node_id);
     }
 
     fn flush_inline_pseudos_recursive(doc: &mut BaseDocument, node_id: NodeId) {
@@ -1070,6 +1079,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
         node_id: NodeId,
         layout_children: &mut ThinVec<NodeId>,
         boxless: &mut Vec<NodeId>,
+        hidden: &mut Vec<NodeId>,
     ) {
         let node = &mut nodes[node_id];
 
@@ -1093,6 +1103,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                         if kept_a_box(node) {
                             boxless.push(node_id);
                         }
+                        hidden.push(node_id);
                     }
                     (DisplayOutside::None, DisplayInside::Contents) => {
                         node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
@@ -1106,6 +1117,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                                 child_id,
                                 layout_children,
                                 boxless,
+                                hidden,
                             );
                         });
                     }
@@ -1131,6 +1143,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                                     child_id,
                                     layout_children,
                                     boxless,
+                                    hidden,
                                 );
                             });
                         }

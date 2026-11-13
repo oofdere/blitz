@@ -630,6 +630,34 @@ fn a_row_whose_parent_becomes_a_table_lets_go_of_its_children() {
     );
 }
 
+/// A display: none element in an inline flow: what is under it has no box. A
+/// block X holding a fixed box F is laid out, then moved under the hidden
+/// element, and F moves out of X. When X is shown again, it is laid out again,
+/// and not taken from a layout that still had F in it: F is in the initial
+/// containing block's hoisted list once.
+#[test]
+fn a_box_moved_under_a_hidden_element_in_an_inline_flow() {
+    let (mut doc, body) = page(".dn { display: none } .pf { position: fixed }");
+    let block = div(&mut doc, body, "", "");
+    let span = create(&mut doc, "span");
+    append(&mut doc, block, span);
+    let hidden = div(&mut doc, span, "", "");
+    let inner = create(&mut doc, "span");
+    append(&mut doc, hidden, inner);
+    div(&mut doc, inner, "", "");
+    let x = div(&mut doc, body, "", "");
+    let fixed = div(&mut doc, x, "pf", "f");
+    doc.resolve(0.0);
+    set_class(&mut doc, hidden, "dn");
+    doc.resolve(0.0);
+    append(&mut doc, inner, x);
+    append(&mut doc, body, fixed);
+    doc.resolve(0.0);
+    append(&mut doc, body, inner);
+    doc.resolve(0.0);
+    assert_hoisted_lists_consistent(&doc);
+}
+
 /// An absolutely positioned box whose containing block becomes display: contents
 /// is claimed by the next containing block up, and leaves the hoisted list of the
 /// first one, which is not laid out again: a box is in one hoisted list at most,
