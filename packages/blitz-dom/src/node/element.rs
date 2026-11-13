@@ -145,6 +145,13 @@ pub struct ElementData {
 #[derive(Debug, Clone)]
 pub struct LayoutData {
     pub cache: Cache,
+    /// The baselines of the results in `cache`, kept in a second cache that gets every
+    /// call `cache` gets, so that its entries are always the same. `cache` keeps only a
+    /// size for a measurement, so a measurement read from it has no baselines: an
+    /// inline-block measured again from the cache would sit on the baseline instead of
+    /// aligning its text with the line's. Each entry's size holds the first and last
+    /// baselines, NaN for none.
+    pub baseline_cache: Cache,
     pub unrounded_layout: Layout,
     pub final_layout: Layout,
     pub scroll_offset: crate::Point<f64>,
@@ -159,6 +166,7 @@ impl LayoutData {
     pub const fn new() -> Self {
         Self {
             cache: Cache::new(),
+            baseline_cache: Cache::new(),
             unrounded_layout: Layout::new(),
             final_layout: Layout::new(),
             scroll_offset: crate::Point::ZERO,

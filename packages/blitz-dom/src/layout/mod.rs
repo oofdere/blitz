@@ -762,10 +762,15 @@ impl taffy::CacheTree for LayoutPassState<'_> {
         node_id: NodeId,
         inputs: &taffy::LayoutInput,
     ) -> Option<taffy::LayoutOutput> {
-        self.node_from_id_mut(node_id)
-            .try_layout_data_mut()?
-            .cache
-            .get(inputs)
+        let data = self.node_from_id_mut(node_id).try_layout_data_mut()?;
+        let mut output = data.cache.get(inputs)?;
+        let baselines = data.baseline_cache.get(inputs)?.size;
+        let baseline = |value: f32| (!value.is_nan()).then_some(value);
+        output.baselines = taffy::Baselines {
+            first: baseline(baselines.width),
+            last: baseline(baselines.height),
+        };
+        Some(output)
     }
 
     #[inline]
@@ -775,9 +780,18 @@ impl taffy::CacheTree for LayoutPassState<'_> {
         inputs: &taffy::LayoutInput,
         layout_output: taffy::LayoutOutput,
     ) {
-        self.node_from_id_mut(node_id)
-            .cache_mut()
-            .store(inputs, layout_output);
+        let baselines = taffy::LayoutOutput {
+            size: taffy::Size {
+                width: layout_output.baselines.first.unwrap_or(f32::NAN),
+                height: layout_output.baselines.last.unwrap_or(f32::NAN),
+            },
+            ..layout_output.clone()
+        };
+        let node = self.node_from_id_mut(node_id);
+        node.cache_mut().store(inputs, layout_output);
+        node.layout_data_mut()
+            .baseline_cache
+            .store(inputs, baselines);
     }
 
     #[inline]

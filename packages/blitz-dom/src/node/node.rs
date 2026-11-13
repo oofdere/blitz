@@ -243,6 +243,7 @@ impl Node {
     pub fn clear_layout_cache(&mut self) {
         if let Some(layout_data) = self.try_layout_data_mut() {
             layout_data.cache.clear();
+            layout_data.baseline_cache.clear();
         }
     }
 

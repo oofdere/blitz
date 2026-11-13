@@ -908,3 +908,33 @@ fn a_block_moved_into_a_leaf_element_reads_as_on_a_fresh_page() {
     .collect();
     assert!(differ.is_empty(), "kept and fresh differ for {differ:?}");
 }
+
+/// An inline-block sits on the line's baseline by its text. Its size is measured once
+/// and then read from the layout cache, which keeps only sizes for measurements, so the
+/// inline-block measured from the cache had no baseline and sat its bottom on the line's
+/// baseline, making the line taller. A flex item measures its content more than once.
+#[test]
+fn an_inline_block_measured_from_the_cache_keeps_its_baseline() {
+    let height = |lay_out_first: bool| {
+        let (mut doc, body) = page("");
+        let flex = div(&mut doc, body, "", "");
+        doc.mutate()
+            .set_attribute(flex, attr("style"), "display: flex");
+        let item = div(&mut doc, flex, "", "");
+        let line = div(&mut doc, item, "", "");
+        let inline_block = create(&mut doc, "span");
+        doc.mutate()
+            .set_attribute(inline_block, attr("style"), "display: inline-block");
+        let text = doc.mutate().create_text_node("abc");
+        append(&mut doc, inline_block, text);
+        append(&mut doc, line, inline_block);
+        if lay_out_first {
+            doc.resolve(0.0);
+        }
+        let span = create(&mut doc, "span");
+        append(&mut doc, line, span);
+        doc.resolve(0.0);
+        doc.get_client_bounding_rect(flex).unwrap().height
+    };
+    assert_eq!(height(true), height(false));
+}
