@@ -176,9 +176,17 @@ Each patch below fixes something those calls reach, and each has a test in
     which included a span in a paragraph: the moved subtree was laid out again
     from scratch. Only a parent that also has no layout parent (hidden, or never
     built) counts now. One test. New.
+31. **A box built again builds its paint lists again.** A box moved into a
+    `display: none` element lets go of its box there, and its damage is cleared
+    without the paint tree reaching it. Moved back out, it was built again with
+    no damage, and an empty box in a shrink-to-fit parent gets none from layout
+    either, so the paint tree kept its old list and painted a child that had
+    moved away twice. A box built again now carries the damage a new box does.
+    One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
-and 600), patch 30 from measuring patch 24's cost.
+and 600), patch 30 from measuring patch 24's cost, and patch 31 from Lens's
+fuzzer over niso's frames (seed 172).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
