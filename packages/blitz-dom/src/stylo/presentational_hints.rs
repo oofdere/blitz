@@ -511,11 +511,6 @@ fn compute_presentational_hints(node: &Node, elem: &ElementData) -> Presentation
                 ));
             }
         }
-
-        if *name == local_name!("hidden") {
-            use style::values::specified::Display;
-            push_style(PropertyDeclaration::Display(Display::None));
-        }
     }
 
     if let Some(lang) = lang {

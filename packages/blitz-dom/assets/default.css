@@ -55,6 +55,16 @@ input {
 }
 
 /* https://html.spec.whatwg.org/#hidden-elements */
+[hidden]:not([hidden=until-found i]):not(embed) {
+    display: none;
+}
+
+embed[hidden] {
+    display: inline;
+    height: 0;
+    width: 0;
+}
+
 input[type="hidden" i] {
     display: none !important;
 }
