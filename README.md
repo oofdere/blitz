@@ -27,8 +27,9 @@ for now. The fork's other branches are untouched.
 **Licences.** The fork keeps upstream's licences. Blitz is MIT OR Apache-2.0
 (`stylo_taffy` is also MPL-2.0), and every patch on this branch is under the same
 terms as the code it changes. `packages/blitz-dom/assets/default.css` (MPL-2.0)
-and `packages/blitz-dom/assets/moz-bullet-font.otf` are unchanged and keep their
-own terms.
+keeps its own terms; patch 26 adds the HTML Standard's two rules for hidden
+elements to it, and nothing else changes it. `packages/blitz-dom/assets/moz-bullet-font.otf`
+is unchanged and keeps its own terms.
 
 ### How niso uses it
 
@@ -151,9 +152,38 @@ Each patch below fixes something those calls reach, and each has a test in
     by a change elsewhere kept the transform origin of its old size. A box
     whose rounded layout changed now gets overflow damage, and so does every
     box it is in. One test. New.
+26. **`hidden` is hidden by the user-agent sheet.** A presentational hint made
+    every `hidden` attribute `display: none`, so `hidden=until-found` and a
+    hidden `embed` had no box, and `display: revert` could not undo it. The
+    hint is gone, and the default sheet has the standard's two rules for hidden
+    elements. Two tests. New.
+27. **A `display: contents` element whose last box was its `::before` lets go
+    of it.** Construction stopped early for an element left with no children
+    and no pseudo-elements, before it let go of its box, so its list kept the
+    freed `::before`. One test. New.
+28. **A row in a table lets go of the box it had outside one.** A table-row
+    outside a table is laid out as a block; once its parent became a table, it
+    still listed a child the table gives no box. Rows, row groups and
+    `display: contents` elements in a table now let go of their own box. One
+    test. New.
+29. **Nothing under a `display: none` element in an inline flow has a box.**
+    The inline flow skipped such an element without leaving its children out
+    of layout, as a block container does since patch 24, so a block moved under
+    it kept a layout cache that named an out-of-flow box that had moved away.
+    One test. New.
+30. **A move into an inline element that is laid out keeps the box.** Patch 24
+    took a node moved into any parent with no list of its own out of layout,
+    which included a span in a paragraph: the moved subtree was laid out again
+    from scratch. Only a parent that also has no layout parent (hidden, or never
+    built) counts now. One test. New.
+
+Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
+and 600), patch 30 from measuring patch 24's cost.
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
-20,000 release seeds.
+20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
+in 2,000 debug and 2,000 release seeds (with an 800×600 viewport and with none)
+and 300 seeds of its wide mode.
 
 ### Left out on purpose
 
@@ -175,6 +205,16 @@ with a pass over that list, on upstream as here. Removing n children of one
 parent one by one is still O(n²): 20,000 children take about 105 ms in a release
 build, both here and on upstream.
 
+Moving a node walks everything under it (patch 11), to find the boxes whose
+layout parent is outside it. In a release build that is about 40 ns a node: 0.04
+ms for a subtree of 1,000 nodes and 0.7 ms for 16,000, against 0.1 ms and 1.4 ms
+for the layout that follows the move. Moving one leaf takes under 1 µs.
+
+A subtree moved into a `display: none` element and back is laid out again from
+scratch when shown, since nothing under a hidden element keeps its box (patch
+24): about 4 ms for 1,000 nodes and 68 ms for 16,000, where a move between two
+shown blocks takes 0.1 ms and 1.4 ms.
+
 ### Known differences that are not fixed
 
 Incremental layout can still differ from a full relayout, in 2 of 20,000
@@ -189,6 +229,10 @@ where the two differ, and neither is checked against a browser yet. The case
 noted here before (a `position: fixed` container with an inline-block, 52px
 against 48px) gives 48px both ways now.
 
+Lens's fuzzer finds the same kind of difference in 6 of 2,000 seeds with an
+800×600 viewport (8 with no viewport, 1 of 300 in its wide mode). The same seeds
+differ before patches 26 to 30. They are not looked into yet.
+
 blitz builds no anonymous table rows and cells (CSS 2.1 17.2.1). A child of a
 `display: table` box that is not a table part (a block, text) gets no box, and
 reads as never laid out, where a browser wraps it in an anonymous cell.
@@ -200,7 +244,7 @@ An inline element with no content on any line has no fragment, and
 
 ```
 cargo test -p blitz-dom --no-default-features --features system-fonts \
-  --test change_list --test ua_stylesheet --test rects
+  --test change_list --test ua_stylesheet --test rects --test hidden
 CHANGE_LIST_FUZZ_SEEDS=20000 cargo test --release -p blitz-dom \
   --no-default-features --features system-fonts \
   --test change_list -- --ignored --nocapture change_list_fuzz
