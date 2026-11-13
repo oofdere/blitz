@@ -34,7 +34,8 @@ pub struct DocumentConfig {
     pub viewport: Option<Viewport>,
     /// The base url which relative URLs are resolved against
     pub base_url: Option<String>,
-    /// User Agent stylesheets, in cascade order. Defaults to `vec![UserAgentStylesheet::default_sheet()]`.
+    /// User Agent stylesheets, in cascade order. Defaults to `vec![UserAgentStylesheet::default_sheet()]`
+    /// with the `default-ua-stylesheet` feature, and to no sheets without it.
     ///
     /// The list is used as given, so replacing it removes the default sheet unless it is
     /// included, e.g. `vec![UserAgentStylesheet::default_sheet(), custom]`.
@@ -73,12 +74,21 @@ pub struct DocumentConfig {
     pub devtools_provider: Option<Arc<dyn DevtoolsProvider>>,
 }
 
+/// The user-agent stylesheets a document has unless its config says otherwise: the
+/// default sheet with the `default-ua-stylesheet` feature, and none without it.
+pub(crate) fn default_ua_stylesheets() -> Vec<UserAgentStylesheet> {
+    #[cfg(feature = "default-ua-stylesheet")]
+    return vec![UserAgentStylesheet::default_sheet()];
+    #[cfg(not(feature = "default-ua-stylesheet"))]
+    return Vec::new();
+}
+
 impl Default for DocumentConfig {
     fn default() -> Self {
         Self {
             viewport: None,
             base_url: None,
-            ua_stylesheets: vec![UserAgentStylesheet::default_sheet()],
+            ua_stylesheets: default_ua_stylesheets(),
             net_provider: None,
             navigation_provider: None,
             shell_provider: None,

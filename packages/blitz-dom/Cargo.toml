@@ -18,8 +18,13 @@ default = [
     "system-fonts",
     "file-input",
     "custom-widget",
-    "text-transform-icu"
+    "text-transform-icu",
+    "default-ua-stylesheet",
 ]
+# The user-agent stylesheet (assets/default.css, MPL-2.0) and the bullet font
+# (assets/moz-bullet-font.otf) that blitz-dom carries. Without it, a document has
+# only the user-agent stylesheets its DocumentConfig gives it, and no bullet font.
+default-ua-stylesheet = []
 custom-widget = ["dep:anyrender", "accessibility"]
 tracing = ["dep:tracing"]
 svg = ["dep:usvg", "dep:svgtypes"]

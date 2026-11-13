@@ -408,6 +408,7 @@ impl BaseDocument {
             })
             .unwrap_or_else(|| {
                 use parley::fontique::{Collection, CollectionOptions, SourceCache};
+                #[cfg_attr(not(feature = "default-ua-stylesheet"), allow(unused_mut))]
                 let mut font_ctx = FontContext {
                     source_cache: SourceCache::new_shared(),
                     collection: Collection::new(CollectionOptions {
@@ -418,6 +419,7 @@ impl BaseDocument {
                         )),
                     }),
                 };
+                #[cfg(feature = "default-ua-stylesheet")]
                 font_ctx
                     .collection
                     .register_fonts(Blob::new(Arc::new(crate::BULLET_FONT) as _), None);
@@ -3701,7 +3703,7 @@ mod inline_with_only_block_children_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "default-ua-stylesheet"))]
 mod font_face_override_tests {
     use super::*;
     use crate::net::{FontFaceOverrides, Resource, ResourceLoadResponse};

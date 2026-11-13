@@ -43,7 +43,7 @@ rust-version = "1.91.0"
 [workspace.dependencies]
 # Blitz dependencies(in-repo)
 blitz = { version = "=0.3.0-beta.4", path = "./packages/blitz" }
-blitz-dom = { version = "=0.3.0-beta.4", path = "./packages/blitz-dom", default-features = false }
+blitz-dom = { version = "=0.3.0-beta.4", path = "./packages/blitz-dom", default-features = false, features = ["default-ua-stylesheet"] }
 blitz-html = { version = "=0.3.0-beta.4", path = "./packages/blitz-html", default-features = false }
 blitz-net = { version = "=0.3.0-beta.4", path = "./packages/blitz-net", default-features = false }
 blitz-paint = { version = "=0.3.0-beta.4", path = "./packages/blitz-paint", default-features = false }

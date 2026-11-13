@@ -1,8 +1,5 @@
 //! User-agent stylesheets.
 
-use std::sync::LazyLock;
-
-use crate::DEFAULT_CSS;
 use crate::url::DocumentUrl;
 use style::media_queries::MediaList;
 use style::servo_arc::Arc as ServoArc;
@@ -38,10 +35,11 @@ impl UserAgentStylesheet {
         Self(DocumentStyleSheet(ServoArc::new(data)))
     }
 
-    /// The default user-agent stylesheet ([`DEFAULT_CSS`]), parsed once.
+    /// The default user-agent stylesheet ([`DEFAULT_CSS`](crate::DEFAULT_CSS)), parsed once.
+    #[cfg(feature = "default-ua-stylesheet")]
     pub fn default_sheet() -> Self {
-        static SHEET: LazyLock<UserAgentStylesheet> =
-            LazyLock::new(|| UserAgentStylesheet::parse(DEFAULT_CSS));
+        static SHEET: std::sync::LazyLock<UserAgentStylesheet> =
+            std::sync::LazyLock::new(|| UserAgentStylesheet::parse(crate::DEFAULT_CSS));
         SHEET.clone()
     }
 

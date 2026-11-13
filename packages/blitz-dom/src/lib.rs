@@ -28,7 +28,9 @@
 //  - `default`: Enables the features listed below.
 //  - `tracing`: Enables tracing support.
 
+#[cfg(feature = "default-ua-stylesheet")]
 pub const DEFAULT_CSS: &str = include_str!("../assets/default.css");
+#[cfg(feature = "default-ua-stylesheet")]
 pub const BULLET_FONT: &[u8] = include_bytes!("../assets/moz-bullet-font.otf");
 
 /// The DOM implementation.

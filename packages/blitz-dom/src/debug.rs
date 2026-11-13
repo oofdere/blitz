@@ -155,7 +155,7 @@ impl BaseDocument {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "default-ua-stylesheet"))]
 mod tests {
     use super::*;
     use crate::{DocumentConfig, qual_name, taffy_node_id};
