@@ -298,6 +298,14 @@ impl BaseDocument {
                 // *doc.nodes[node_id].paint_children.borrow_mut() = Some(layout_children);
 
                 damage.remove(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
+                // A box built again builds its paint lists and overflow again,
+                // from these children. Damage that reconstructs it carries that
+                // already, but a box reconstructed because it was never built, or
+                // let go of its box (in a `display: none` subtree, say) and has
+                // had its damage cleared since, carries it only from here: the
+                // paint tree would otherwise keep the lists it had before.
+                damage.insert(style::selector_parser::RestyleDamage::RECALCULATE_OVERFLOW);
+                doc.nodes[node_id].mark_damaged();
                 // damage.insert(RestyleDamage::RELAYOUT | RestyleDamage::REPAINT);
             } else {
                 //if damage.contains(CONSTRUCT_DESCENDENT) {
