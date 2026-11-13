@@ -938,3 +938,33 @@ fn an_inline_block_measured_from_the_cache_keeps_its_baseline() {
     };
     assert_eq!(height(true), height(false));
 }
+
+/// A block that becomes an inline element in its parent's flow has no box of its own.
+/// It lets go of everything its box kept, its layout included, so a read finds what it
+/// finds on a page where the element was inline from the start.
+#[test]
+fn a_block_that_becomes_inline_reads_as_on_a_fresh_page() {
+    let read = |lay_out_first: bool| {
+        let (mut doc, body) = page("");
+        let parent = div(&mut doc, body, "", "");
+        let element = div(&mut doc, parent, "", "");
+        let span = create(&mut doc, "span");
+        append(&mut doc, element, span);
+        let contents = div(&mut doc, span, "", "");
+        doc.mutate()
+            .set_attribute(contents, attr("style"), "display: contents");
+        let block = div(&mut doc, contents, "", "");
+        let inner = create(&mut doc, "span");
+        append(&mut doc, block, inner);
+        div(&mut doc, inner, "", "");
+        if lay_out_first {
+            doc.resolve(0.0);
+        }
+        doc.mutate()
+            .set_attribute(element, attr("style"), "display: inline");
+        doc.resolve(0.0);
+        let rect = doc.get_client_bounding_rect(element).unwrap();
+        (rect.x, rect.y, rect.width, rect.height)
+    };
+    assert_eq!(read(true), read(false));
+}

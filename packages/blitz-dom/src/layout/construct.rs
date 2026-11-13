@@ -955,24 +955,16 @@ fn create_checkbox_input(doc: &mut BaseDocument, input_element_id: NodeId) {
     }
 }
 
-/// An element that no longer has a box of its own (display: contents, or laid out in
-/// an inline formatting context's flow) lets go of what its box kept: its anonymous
-/// blocks, which construction would otherwise never free, and its list of layout
-/// children, which names boxes whose layout parent is now another container.
 /// `node_id` and everything under it get no box: a table leaves out the children it
-/// has no row or cell for. They let go of what an earlier box kept (layout children,
-/// anonymous blocks, an inline layout, a layout parent, a layout and its cache), so
-/// they read as nodes that were never laid out, and are built again when shown.
+/// has no row or cell for. They let go of what an earlier box kept, and of their layout
+/// parent, so they read as nodes that were never laid out, and are built again when
+/// shown.
 pub(crate) fn leave_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
     let mut stack = vec![node_id];
     while let Some(id) = stack.pop() {
         let_go_of_own_box(doc, id);
         let node = &mut doc.nodes[id];
         node.layout_parent.set(None);
-        if let NodeData::Element(data) | NodeData::AnonymousBlock(data) = &mut node.data {
-            data.take_inline_layout();
-            data.layout_data = None;
-        }
         stack.extend(
             node.before()
                 .into_iter()
@@ -990,6 +982,13 @@ fn leave_children_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
     }
 }
 
+/// An element that no longer has a box of its own (display: contents, laid out in an
+/// inline formatting context's flow, or left out of layout) lets go of what its box
+/// kept: its anonymous blocks, which construction would otherwise never free; its list
+/// of layout children, which names boxes whose layout parent is now another container;
+/// the flags and inline layout of the formatting context it established; and its layout
+/// and layout cache, which layout no longer writes. A read then finds what it finds for
+/// an element that never had a box.
 fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
     let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
     for anon_id in anonymous_blocks {
@@ -997,8 +996,11 @@ fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
     }
     let node = &mut doc.nodes[node_id];
     *node.layout_children.get_mut() = None;
-    node.flags
-        .remove(NodeFlags::IS_INLINE_WITH_ONLY_BLOCK_CHILDREN);
+    node.flags.reset_construction_flags();
+    if let NodeData::Element(data) | NodeData::AnonymousBlock(data) = &mut node.data {
+        data.take_inline_layout();
+        data.layout_data = None;
+    }
 }
 
 /// Find and return the "layout_children" (inline boxes) for an inline layout
