@@ -610,6 +610,7 @@ impl DocumentMutator<'_> {
         // nearest surviving ancestor.
         self.process_removed_subtree(node_id);
 
+        self.doc.take_out_of_layout_parent(node_id);
         let node = &mut self.doc.nodes[node_id];
 
         // Update child_idx values
@@ -892,6 +893,7 @@ impl DocumentMutator<'_> {
             let Some(old_parent_id) = child.parent.take() else {
                 continue;
             };
+            self.doc.take_out_of_layout_parent(child_id);
 
             let old_parent = &mut self.doc.nodes[old_parent_id];
             old_parent.insert_damage(ALL_DAMAGE);

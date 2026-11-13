@@ -904,6 +904,20 @@ impl BaseDocument {
         self.nodes.remove(node_id)
     }
 
+    /// Take `node_id`, which is leaving its parent, out of its layout parent's
+    /// `layout_children`. The old parent is built again when construction next
+    /// reaches it, but one that construction skips (in a `display: none` subtree)
+    /// would otherwise keep listing a box that now belongs to another container.
+    pub(crate) fn take_out_of_layout_parent(&self, node_id: NodeId) {
+        let node = &self.nodes[node_id];
+        let Some(parent) = node.layout_parent.take().and_then(|id| self.nodes.get(id)) else {
+            return;
+        };
+        if let Some(children) = parent.layout_children.borrow_mut().as_mut() {
+            children.retain(|id| *id != node_id);
+        }
+    }
+
     /// Remove `node_id`, which is being removed from the slab, from the layout lists that
     /// name it (its layout parent's `layout_children` and its containing block's
     /// `hoisted_children`), and clear the back-pointers of the boxes it lists. A container

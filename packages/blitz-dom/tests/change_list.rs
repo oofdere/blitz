@@ -274,6 +274,23 @@ fn an_inline_element_whose_block_moved_out_frees_its_anonymous_blocks() {
     assert!(doc.get_node(inline).unwrap().anonymous_blocks.is_empty());
 }
 
+/// A box that moves out of a display: none subtree leaves the list of the
+/// container it was in, which construction does not reach while it is hidden.
+#[test]
+fn a_box_moved_out_of_a_hidden_subtree_leaves_its_old_containers_list() {
+    let (mut doc, body) = page(".hidden { display: none }");
+    let hidden = div(&mut doc, body, "", "t");
+    let container = div(&mut doc, hidden, "", "t");
+    let moving = div(&mut doc, container, "", "t");
+    doc.resolve(0.0);
+    set_class(&mut doc, hidden, "hidden");
+    doc.resolve(0.0);
+    let target = div(&mut doc, body, "", "t");
+    append(&mut doc, target, moving);
+    doc.resolve(0.0);
+    assert_layout_lists_consistent(&doc);
+}
+
 const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}";
 
 const FUZZ_CLASSES: [&str; 16] = [
