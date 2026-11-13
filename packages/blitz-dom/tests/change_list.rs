@@ -578,3 +578,18 @@ fn contents_inside_contents() {
     doc.resolve(0.0);
     assert_layout_lists_consistent(&doc);
 }
+
+/// An absolutely positioned box whose containing block becomes display: contents
+/// is claimed by the next containing block up, and leaves the hoisted list of the
+/// first one, which is not laid out again: a box is in one hoisted list at most,
+/// the list of the block its back-pointer names.
+#[test]
+fn a_box_whose_containing_block_becomes_contents_is_in_one_hoisted_list() {
+    let (mut doc, body) = page(".pa { position: absolute } .dc { display: contents }");
+    let outer = div(&mut doc, body, "pa", "t");
+    div(&mut doc, outer, "pa", "t");
+    doc.resolve(0.0);
+    set_class(&mut doc, outer, "dc");
+    doc.resolve(0.0);
+    assert_hoisted_lists_consistent(&doc);
+}
