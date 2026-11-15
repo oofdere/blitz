@@ -178,7 +178,12 @@ pub(crate) fn build_inline_layout_into(
                                 .as_ref()
                                 .map_or(&[][..], |styles| styles.as_slice()),
                         );
-                        for child_id in node.children.iter().copied() {
+                        for child_id in node
+                            .before()
+                            .into_iter()
+                            .chain(node.children.iter().copied())
+                            .chain(node.after())
+                        {
                             // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                             build_inline_layout_recursive(
                                 builder,

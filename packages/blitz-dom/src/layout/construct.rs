@@ -25,7 +25,7 @@ use crate::{
     },
     node::{NodeFlags, NodeKind, SpecialElementData, TextInputData, TextLayout},
     qual_name, stylo_to_parley,
-    traversal::{iter_children, iter_children_and_pseudos},
+    traversal::iter_children_and_pseudos,
 };
 
 use super::{
@@ -608,6 +608,7 @@ fn collect_layout_children_with_wrap(
         // layout children (text nodes carry no style and cannot be laid out
         // as block/flex/grid items).
         _ => {
+            flush_contents_pseudo_elements(doc, container_node_id);
             let mut classification = FlowClassification::default();
             classify_flow_children(doc, container_node_id, &mut classification);
 
@@ -822,6 +823,22 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
             }
         }
     }
+}
+
+/// The pseudo-elements of a display: contents child take part in its container's
+/// formatting context, and the classification of the container's children reads them.
+/// They are flushed before that read, so that the first construction sees the
+/// pseudo-elements that a later one would find already made.
+fn flush_contents_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
+    doc.iter_children_mut(node_id, |child_id, doc| {
+        if doc.nodes[child_id]
+            .display_style()
+            .is_some_and(|display| display.inside() == DisplayInside::Contents)
+        {
+            flush_pseudo_elements(doc, child_id);
+            flush_contents_pseudo_elements(doc, child_id);
+        }
+    });
 }
 
 /// Handles the cases where there are text nodes or inline nodes that need to be wrapped in an anonymous block node
@@ -1120,7 +1137,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                         if kept_a_box(node) {
                             boxless.push(node_id);
                         }
-                        iter_children!(nodes[node_id], |child_id| {
+                        iter_children_and_pseudos!(nodes[node_id], |child_id| {
                             drop_list_item_marker(&mut nodes[child_id]);
                             find_inline_layout_embedded_boxes_recursive(
                                 nodes,
