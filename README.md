@@ -204,12 +204,18 @@ Each patch below fixes something those calls reach, and each has a test in
     left out and lines kept the room of floats that had moved. Such a box now
     uses and keeps cached results only while its context has no floats, as a
     fresh page lays it out. One test. New.
+35. **A node that lets go of its box drops its transform.** A node left out of
+    layout (moved into a canvas, a form control or a `display: none` element,
+    or left out of a table) kept the transform resolved against its old box,
+    and its bounding rect went through it. It now reads as a node never laid
+    out. Three tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
 over niso's frames (seed 172), patches 32 and 33 from the same fuzzer (seed
-2104, and its mode that changes the viewport between tasks), and patch 34 from
-niso's copy harness, which reads a kept page and a fresh one (59 of 2,000 seeds).
+2104, and its mode that changes the viewport between tasks), and patches 34 and 35
+from niso's copy harness, which reads a kept page and a fresh one (59 of 2,000
+seeds, and seeds 278, 978 and 1944).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
