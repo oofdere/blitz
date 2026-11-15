@@ -2319,9 +2319,11 @@ impl BaseDocument {
         }
 
         // Color-scheme changes affect values that are resolved at cascade time
-        // (`light-dark()`, system colors) without necessarily flipping any
-        // media query result, so conservatively recascade the whole tree.
-        if changes.contains(DeviceChanges::COLOR_SCHEME) {
+        // (`light-dark()`, system colors), and scale changes affect border and
+        // outline widths, which are snapped to device pixels at cascade time.
+        // Neither necessarily flips any media query result, so conservatively
+        // recascade the whole tree.
+        if changes.intersects(DeviceChanges::COLOR_SCHEME | DeviceChanges::SCALE) {
             if let Some(root_id) = self.try_root_element().map(|el| el.id) {
                 self.nodes[root_id].set_restyle_hint(RestyleHint::recascade_subtree());
             }
