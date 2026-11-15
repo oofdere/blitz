@@ -1295,8 +1295,18 @@ impl BaseDocument {
         }
     }
 
+    /// Parse a `<style>` element's sheet from its child text content: the data of its
+    /// own Text children, in tree order, as HTML's "update a style block" takes it. Text
+    /// further down, under an element child, is not part of the sheet.
     pub fn process_style_element(&mut self, target_id: NodeId) {
-        let css = self.nodes[target_id].text_content();
+        let css: String = self.nodes[target_id]
+            .children
+            .iter()
+            .filter_map(|child_id| match &self.nodes[*child_id].data {
+                NodeData::Text(text) => Some(text.content.as_str()),
+                _ => None,
+            })
+            .collect();
         let css = html_escape::decode_html_entities(&css);
         let sheet = self.make_stylesheet(&css, Origin::Author);
         self.add_stylesheet_for_node(sheet, target_id);
