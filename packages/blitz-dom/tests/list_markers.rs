@@ -2,6 +2,7 @@
 //! fresh gives it. The edits are [DocumentMutator](blitz_dom::DocumentMutator) calls
 //! only, as niso's layout side makes them.
 
+use blitz_dom::node::ListItemLayoutPosition;
 use blitz_dom::{
     BaseDocument, ColorScheme, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet,
     Viewport, ns,
@@ -89,4 +90,36 @@ fn an_out_of_flow_list_item_whose_parent_joins_an_inline_flow_reads_as_on_a_fres
         .filter(|style| read(style, true) != read(style, false))
         .collect();
     assert!(differ.is_empty(), "kept and fresh differ for {differ:?}");
+}
+
+/// The width of an outside marker's layout, which is in device pixels.
+fn outside_marker_width(doc: &BaseDocument, node: NodeId) -> f32 {
+    let element = doc.get_node(node).unwrap().element_data().unwrap();
+    match &element.list_item_data.as_deref().unwrap().position {
+        ListItemLayoutPosition::Outside(layout) => layout.full_width(),
+        ListItemLayoutPosition::Inside => panic!("the marker is inside"),
+    }
+}
+
+/// A marker outside its list item is shaped in device pixels, so when the scale goes
+/// from 1 to 2 for the same 800 by 600 CSS pixels its layout must be twice as wide. The
+/// list item holds no text: a scale change builds every inline layout again, and the
+/// list around one, but here there is none.
+#[test]
+fn an_outside_marker_is_laid_out_again_when_the_scale_changes() {
+    let (mut doc, html) = page();
+    let ul = add(&mut doc, html, "ul");
+    let li = add(&mut doc, ul, "li");
+    doc.resolve(0.0);
+    let at_one = outside_marker_width(&doc, li);
+
+    doc.set_viewport(Viewport::new(1600, 1200, 2.0, ColorScheme::Light));
+    doc.resolve(0.0);
+    let at_two = outside_marker_width(&doc, li);
+
+    assert!(at_one > 0.0, "the marker has no width at scale 1");
+    assert!(
+        (at_two - 2.0 * at_one).abs() <= 1.0,
+        "at scale 1 the marker is {at_one} device pixels wide, and at scale 2 {at_two}"
+    );
 }

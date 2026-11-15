@@ -3,8 +3,9 @@ use blitz_traits::node_id::NodeId;
 use markup5ever::local_name;
 use stylo_taffy::CopyStyleGetters;
 
+use super::list::outside_marker_layout;
 use crate::net::ResourceHandler;
-use crate::node::NodeFlags;
+use crate::node::{ListItemLayout, ListItemLayoutPosition, NodeFlags};
 use crate::stylo::BlitzNode;
 use crate::tree::NodeTree;
 use crate::{
@@ -509,9 +510,23 @@ impl BaseDocument {
                 continue;
             }
 
+            let styles = node.primary_styles().map(|styles| styles.clone());
             let Some(element) = node.data.downcast_element_mut() else {
                 continue;
             };
+
+            if let (
+                Some(ListItemLayout {
+                    marker,
+                    position: ListItemLayoutPosition::Outside(layout),
+                    ..
+                }),
+                Some(styles),
+            ) = (element.list_item_data.as_deref_mut(), &styles)
+            {
+                **layout =
+                    outside_marker_layout(font_ctx, layout_ctx, scale, node.id, styles, marker);
+            }
 
             if element.inline_layout_data.is_some() {
                 if node.is_anonymous() {

@@ -1,7 +1,10 @@
+use std::sync::Mutex;
+
 use blitz_traits::node_id::NodeId;
 use markup5ever::local_name;
-use parley::FontFamily;
+use parley::{FontContext, FontFamily, Layout, LayoutContext};
 use style::computed_values::list_style_type::T as ListStyleType;
+use style::properties::ComputedValues;
 use style::{
     computed_values::list_style_position::T as ListStylePosition, counter_style::CounterStyle,
 };
@@ -9,7 +12,7 @@ use stylo_taffy::CopyStyleGetters;
 
 use crate::{
     BaseDocument,
-    node::{ListItemLayout, ListItemLayoutPosition, Marker},
+    node::{ListItemLayout, ListItemLayoutPosition, Marker, TextBrush},
     stylo_to_parley,
 };
 
@@ -72,41 +75,19 @@ fn node_list_item_child(
     };
 
     let styles = node.primary_styles().unwrap();
-    let list_style_type = styles.get_list_style_type();
-    let list_style_position = styles.clone_list_style_position();
-    let marker = marker_for_style(list_style_type, index)?;
+    let marker = marker_for_style(styles.get_list_style_type(), index)?;
 
-    let position = match list_style_position {
+    let position = match styles.clone_list_style_position() {
         ListStylePosition::Inside => ListItemLayoutPosition::Inside,
         ListStylePosition::Outside => {
-            let mut parley_style = stylo_to_parley::style(child_id, &styles);
-
-            if let Some(font_family) = font_for_bullet_style(list_style_type) {
-                parley_style.font_family = font_family;
-            }
-
-            // Create a parley tree builder
-            let mut font_ctx = doc.font_ctx.lock().unwrap();
-            let mut builder = doc.layout_ctx.tree_builder(
-                &mut font_ctx,
+            ListItemLayoutPosition::Outside(Box::new(outside_marker_layout(
+                &doc.font_ctx,
+                &mut doc.layout_ctx,
                 doc.viewport.scale(),
-                true,
-                &parley_style,
-            );
-
-            match &marker {
-                Marker::Char(char) => {
-                    let mut buf = [0u8; 4];
-                    builder.push_text(char.encode_utf8(&mut buf));
-                }
-                Marker::String(str) => builder.push_text(str),
-            };
-
-            let mut layout = builder.build().0;
-            let width = layout.calculate_content_widths().max;
-            layout.break_all_lines(Some(width));
-
-            ListItemLayoutPosition::Outside(Box::new(layout))
+                child_id,
+                &styles,
+                &marker,
+            )))
         }
     };
 
@@ -115,6 +96,38 @@ fn node_list_item_child(
         position,
         content_box_subpixel_offset: taffy::Point::ZERO,
     })
+}
+
+/// Lay out a marker that goes outside its list item, in device pixels at `scale`.
+pub(super) fn outside_marker_layout(
+    font_ctx: &Mutex<FontContext>,
+    layout_ctx: &mut LayoutContext<TextBrush>,
+    scale: f32,
+    node_id: NodeId,
+    styles: &ComputedValues,
+    marker: &Marker,
+) -> Layout<TextBrush> {
+    let mut parley_style = stylo_to_parley::style(node_id, styles);
+
+    if let Some(font_family) = font_for_bullet_style(styles.get_list_style_type()) {
+        parley_style.font_family = font_family;
+    }
+
+    let mut font_ctx = font_ctx.lock().unwrap();
+    let mut builder = layout_ctx.tree_builder(&mut font_ctx, scale, true, &parley_style);
+
+    match marker {
+        Marker::Char(char) => {
+            let mut buf = [0u8; 4];
+            builder.push_text(char.encode_utf8(&mut buf));
+        }
+        Marker::String(str) => builder.push_text(str),
+    };
+
+    let mut layout = builder.build().0;
+    let width = layout.calculate_content_widths().max;
+    layout.break_all_lines(Some(width));
+    layout
 }
 
 // Determine the marker to render for a given list style type
