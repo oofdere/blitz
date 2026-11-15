@@ -1073,6 +1073,15 @@ pub(crate) fn find_inline_layout_embedded_boxes(
             || node.is_inline_with_only_block_children()
     }
 
+    /// A list item gets its marker when its parent's box is constructed. A child of an
+    /// element laid out in this flow has no such parent, so it has no marker, as on a page
+    /// built fresh, even if it kept one from when that element had a box of its own.
+    fn drop_list_item_marker(node: &mut Node) {
+        if let Some(element_data) = node.element_data_mut() {
+            element_data.list_item_data = None;
+        }
+    }
+
     fn find_inline_layout_embedded_boxes_recursive(
         nodes: &mut crate::NodeTree,
         parent_id: NodeId,
@@ -1111,6 +1120,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                             boxless.push(node_id);
                         }
                         iter_children!(nodes[node_id], |child_id| {
+                            drop_list_item_marker(&mut nodes[child_id]);
                             find_inline_layout_embedded_boxes_recursive(
                                 nodes,
                                 parent_id,
@@ -1137,6 +1147,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                                 boxless.push(node_id);
                             }
                             iter_children_and_pseudos!(nodes[node_id], |child_id| {
+                                drop_list_item_marker(&mut nodes[child_id]);
                                 find_inline_layout_embedded_boxes_recursive(
                                     nodes,
                                     node_id,
