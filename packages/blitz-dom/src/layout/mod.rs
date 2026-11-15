@@ -826,6 +826,26 @@ impl taffy::LayoutBlockContainer for LayoutPassState<'_> {
         inputs: taffy::LayoutInput,
         block_ctx: Option<&mut BlockContext<'_>>,
     ) -> taffy::LayoutOutput {
+        // A box laid out in its parent's block formatting context reads the floats
+        // already placed there and places its own floats into it. Neither is part of
+        // the cache key, and a result taken from the cache places no floats. So such
+        // a box uses and keeps cached results only while that context has no floats.
+        #[cfg(feature = "floats")]
+        if let Some(block_ctx) = block_ctx {
+            use taffy::CacheTree as _;
+            if !block_ctx.has_floats() {
+                if let Some(output) = self.cache_get(node_id, &inputs) {
+                    return output;
+                }
+            }
+            let output = self.compute_child_layout_internal(node_id, inputs, Some(&mut *block_ctx));
+            if block_ctx.has_floats() {
+                self.cache_clear(node_id);
+            } else {
+                self.cache_store(node_id, &inputs, output.clone());
+            }
+            return output;
+        }
         compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
             tree.compute_child_layout_internal(node_id, inputs, block_ctx)
         })
