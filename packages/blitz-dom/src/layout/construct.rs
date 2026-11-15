@@ -992,9 +992,9 @@ fn leave_children_out_of_layout(doc: &mut BaseDocument, node_id: NodeId) {
 /// inline formatting context's flow, or left out of layout) lets go of what its box
 /// kept: its anonymous blocks, which construction would otherwise never free; its list
 /// of layout children, which names boxes whose layout parent is now another container;
-/// the flags and inline layout of the formatting context it established; and its layout
-/// and layout cache, which layout no longer writes. A read then finds what it finds for
-/// an element that never had a box.
+/// the flags and inline layout of the formatting context it established; and its layout,
+/// layout cache and resolved transform, which layout no longer writes. A read then finds
+/// what it finds for an element that never had a box.
 pub(crate) fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
     let anonymous_blocks = std::mem::take(&mut doc.nodes[node_id].anonymous_blocks);
     for anon_id in anonymous_blocks {
@@ -1006,6 +1006,7 @@ pub(crate) fn let_go_of_own_box(doc: &mut BaseDocument, node_id: NodeId) {
     if let NodeData::Element(data) | NodeData::AnonymousBlock(data) = &mut node.data {
         data.take_inline_layout();
         data.layout_data = None;
+        data.transform = None;
     }
 }
 
