@@ -183,10 +183,25 @@ Each patch below fixes something those calls reach, and each has a test in
     either, so the paint tree kept its old list and painted a child that had
     moved away twice. A box built again now carries the damage a new box does.
     One test. New.
+32. **A list item that joins an inline flow loses its marker.** A list item gets
+    its marker when its parent's box is constructed. When that parent stopped
+    having a box of its own and was laid out in an inline formatting context
+    instead (it became `display: contents` inside an inline element, or an
+    inline element around it lost its last block), the list item kept its
+    marker, where a page built fresh gives it none. Construction now drops the
+    marker of each child of an element it lays out in the flow. Like upstream,
+    a list item inside an inline element still gets no marker, where a browser
+    gives it one. Two tests. New.
+33. **Outside markers are laid out again when the scale changes.** An outside
+    marker is shaped in device pixels when its list is constructed. A scale
+    change built every inline layout again but not markers, so a marker kept
+    the size it had at the old scale. It is now laid out again with them. One
+    test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
-and 600), patch 30 from measuring patch 24's cost, and patch 31 from Lens's
-fuzzer over niso's frames (seed 172).
+and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
+over niso's frames (seed 172), and patches 32 and 33 from the same fuzzer (seed
+2104, and its mode that changes the viewport between tasks).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
