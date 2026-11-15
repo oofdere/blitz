@@ -116,6 +116,7 @@ pub(crate) fn build_inline_layout_into(
     }
 
     text_layout.text = builder.build_into(&mut text_layout.layout);
+    text_layout.holds_laid_out_lines = false;
     return;
 
     fn build_inline_layout_recursive(

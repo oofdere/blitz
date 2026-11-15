@@ -771,6 +771,10 @@ impl LayoutPassState<'_> {
             return LayoutOutput::from_outer_size(clamped_size);
         }
 
+        let laid_out_lines = (inputs.run_mode == taffy::RunMode::ComputeSize
+            && inline_layout.holds_laid_out_lines)
+            .then(|| (inline_layout.layout.clone(), inline_layout.block_offset));
+
         let resolved_text_indent = text_indent
             .length
             .resolve(CSSPixelLength::new((width / scale).max(0.0)))
@@ -1315,6 +1319,11 @@ impl LayoutPassState<'_> {
 
         if inputs.run_mode == RunMode::PerformLayout {
             inline_layout.span_cb_flags = span_cb_flags;
+            inline_layout.holds_laid_out_lines = true;
+        }
+        if let Some((layout, block_offset)) = laid_out_lines {
+            inline_layout.layout = layout;
+            inline_layout.block_offset = block_offset;
         }
 
         // Put layout back

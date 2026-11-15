@@ -37,6 +37,11 @@ pub struct TextLayout {
     /// `final_layout`. Paint draws text from the unrounded origin so that it keeps its sub-pixel
     /// position while box edges stay snapped. Set by the `writing-mode` layout pass; zero otherwise.
     pub content_box_subpixel_offset: taffy::Point<f32>,
+    /// Whether `layout` holds the lines that the last `RunMode::PerformLayout` run of inline
+    /// layout broke, and `block_offset` the offset it set. A `RunMode::ComputeSize` run breaks
+    /// lines at the width it measures and then puts both back: an ancestor whose layout comes from
+    /// the cache does not lay this box out again, and paint reads them.
+    pub holds_laid_out_lines: bool,
 }
 
 impl TextLayout {
