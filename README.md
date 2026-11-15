@@ -197,11 +197,19 @@ Each patch below fixes something those calls reach, and each has a test in
     change built every inline layout again but not markers, so a marker kept
     the size it had at the old scale. It is now laid out again with them. One
     test. New.
+34. **A box whose block formatting context has floats is laid out again.** The
+    layout cache's key does not include the floats a box reads from its parent's
+    block formatting context or places into it, and a cached result places no
+    floats. After an edit elsewhere in that context, a cached box's floats were
+    left out and lines kept the room of floats that had moved. Such a box now
+    uses and keeps cached results only while its context has no floats, as a
+    fresh page lays it out. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
-over niso's frames (seed 172), and patches 32 and 33 from the same fuzzer (seed
-2104, and its mode that changes the viewport between tasks).
+over niso's frames (seed 172), patches 32 and 33 from the same fuzzer (seed
+2104, and its mode that changes the viewport between tasks), and patch 34 from
+niso's copy harness, which reads a kept page and a fresh one (59 of 2,000 seeds).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
