@@ -428,6 +428,7 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
         let new_text = new.get_inherited_text();
         !std::ptr::eq(old_text, new_text)
             && (old_text.white_space_collapse != new_text.white_space_collapse
+                || old_text.text_wrap_mode != new_text.text_wrap_mode
                 || old_text.text_transform != new_text.text_transform
                 || old_text.word_break != new_text.word_break
                 || old_text.line_break != new_text.line_break
