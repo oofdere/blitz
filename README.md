@@ -209,18 +209,44 @@ Each patch below fixes something those calls reach, and each has a test in
     or left out of a table) kept the transform resolved against its old box,
     and its bounding rect went through it. It now reads as a node never laid
     out. Three tests. New.
+36. **A change to `text-wrap-mode` builds the text again.** The wrap mode is
+    part of the text's built layout, and a change to it (`white-space: nowrap`)
+    only laid the old lines out again at the new width. It now gets the damage
+    the other text properties that break lines get. Two tests. New.
+37. **The pseudo-elements of a `display: contents` child stay in its flow.**
+    A container's first construction read them before they were made, and the
+    inline flow left out those of a `display: contents` element, so a box
+    built again lost its `::before` text. Both now see them. Three tests. New.
+38. **A `<style>` element's sheet is its own text children.** Its sheet was
+    the text of all its descendants, and text put under an element inside it
+    reached a page built fresh but not one edited after layout. It is now its
+    child text content, as HTML says. One test. New.
+39. **A scale change recascades the tree.** Border widths are snapped to
+    device pixels when their style is computed, and a scale change kept the
+    old snapping. It now recascades, as a colour-scheme change does. One test.
+    New.
+40. **A measurement does not leave its lines in a laid-out box.** Measuring a
+    box broke its lines at the measured width, and a layout taken from the
+    cache did not break them again. A box already laid out now gets its lines
+    back after a measurement. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
 over niso's frames (seed 172), patches 32 and 33 from the same fuzzer (seed
 2104, and its mode that changes the viewport between tasks), and patches 34 and 35
 from niso's copy harness, which reads a kept page and a fresh one (59 of 2,000
-seeds, and seeds 278, 978 and 1944).
+seeds, and seeds 278, 978 and 1944). Patches 36 and 37 come from Lens's fuzzer
+(seeds 96, 612, 1221 and 1822, and 1137 and 1658), patch 38 from the frames
+fuzzer's mode that changes a style sheet (seed 1210), and patches 39 and 40 from
+its viewport mode (14 seeds, and seed 59).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
 in 2,000 debug and 2,000 release seeds (with an 800×600 viewport and with none)
 and 300 seeds of its wide mode.
+
+Lens's fuzzer has no stale seed in 2,000 release seeds, with floats and without,
+and the frames fuzzer's viewport mode none in 300.
 
 ### Left out on purpose
 
