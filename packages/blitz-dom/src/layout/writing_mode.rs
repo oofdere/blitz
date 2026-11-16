@@ -32,26 +32,10 @@ use taffy::{
 };
 
 impl BaseDocument {
-    /// The writing mode in which the root element's layout algorithm runs: the HTML special case of
-    /// css-writing-modes-3 §8 uses the `writing-mode` of its `<body>` child instead of its own.
-    pub(crate) fn root_layout_wm(&self, root_id: crate::NodeId) -> WritingMode {
-        let root = &self.nodes[root_id];
-        let wm = root.writing_mode();
-        if root.has_containment() {
-            return wm;
-        }
-        root.children
-            .iter()
-            .map(|&child| &self.nodes[child])
-            .find(|child| {
-                child
-                    .data
-                    .downcast_element()
-                    .is_some_and(|el| *el.name.local == *"body")
-            })
-            .filter(|body| !body.has_containment())
-            .map(|body| body.writing_mode())
-            .unwrap_or(wm)
+    /// The writing mode in which the root element's layout algorithm runs: the document's
+    /// principal writing mode.
+    pub(crate) fn root_layout_wm(&self, _root_id: crate::NodeId) -> WritingMode {
+        self.root_node().principal_writing_mode()
     }
 }
 

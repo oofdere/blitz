@@ -47,6 +47,10 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     pub style: T,
     /// Extra node-derived flags that are not part of the stylo style
     pub flags: StyleFlags,
+    /// The writing mode the box itself uses: its style's, or, for the root element's box and
+    /// the initial containing block, the document's principal writing mode (CSS Writing Modes
+    /// 4, section 8)
+    pub own_wm: WritingMode,
     /// The writing mode of the algorithm laying this box out, whose inline/block axes the Taffy
     /// getters are expressed in (see [`crate::writing_mode`]). Defaults to the style's own.
     #[cfg(feature = "writing-mode")]
@@ -80,9 +84,11 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
     pub fn new(style: T, flags: StyleFlags) -> Self {
         #[cfg(feature = "writing-mode")]
         let layout_wm = style.writing_mode;
+        let own_wm = style.writing_mode;
         Self {
             style,
             flags,
+            own_wm,
             #[cfg(feature = "writing-mode")]
             layout_wm,
             #[cfg(feature = "writing-mode")]
@@ -96,9 +102,11 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
     /// the algorithm laying this box out. Without the `writing-mode` feature it is ignored.
     #[cfg_attr(not(feature = "writing-mode"), allow(unused_variables))]
     pub fn new_in(style: T, flags: StyleFlags, layout_wm: WritingMode) -> Self {
+        let own_wm = style.writing_mode;
         Self {
             style,
             flags,
+            own_wm,
             #[cfg(feature = "writing-mode")]
             layout_wm,
             #[cfg(feature = "writing-mode")]
@@ -108,7 +116,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         }
     }
 
-    /// The writing mode the getters are expressed in (the style's own without the feature)
+    /// The writing mode the getters are expressed in (the box's own without the feature)
     #[inline(always)]
     fn layout_wm(&self) -> WritingMode {
         #[cfg(feature = "writing-mode")]
@@ -117,7 +125,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         }
         #[cfg(not(feature = "writing-mode"))]
         {
-            self.style.writing_mode
+            self.own_wm
         }
     }
 
@@ -214,7 +222,7 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn direction(&self) -> taffy::Direction {
-        self.layout_wm().direction_of(self.style.writing_mode)
+        self.layout_wm().direction_of(self.own_wm)
     }
 
     #[inline]
@@ -450,7 +458,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
     #[inline]
     fn oof_inline_item_alignment(&self, input: stylo::AlignFlags) -> Option<taffy::AlignItems> {
         let layout_wm = self.layout_wm();
-        let own_is_rtl = layout_wm.direction_of(self.style.writing_mode) == taffy::Direction::Rtl;
+        let own_is_rtl = layout_wm.direction_of(self.own_wm) == taffy::Direction::Rtl;
         convert::oof_item_alignment(input, true, own_is_rtl != layout_wm.line_left_is_bottom())
     }
 
@@ -478,7 +486,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
         if cfg!(feature = "writing-mode") {
             let reversed = self
                 .layout_wm()
-                .block_start_is_reversed(self.style.writing_mode);
+                .block_start_is_reversed(self.own_wm);
             align.keyword = match align.keyword {
                 taffy::AlignItemsKeyword::SelfStart if reversed => taffy::AlignItemsKeyword::End,
                 taffy::AlignItemsKeyword::SelfStart => taffy::AlignItemsKeyword::Start,

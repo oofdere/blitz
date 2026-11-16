@@ -388,7 +388,7 @@ impl BaseDocument {
     /// containing block: the document's scrollable overflow (the root element's margin box
     /// and the scrollable overflow of what it holds, the absolute boxes the initial
     /// containing block holds included and the fixed ones left out), at least the viewport, and only as far as it reaches from the
-    /// viewport's scroll origin. That origin is on the right when the root element's
+    /// viewport's scroll origin. That origin is on the right when the document's principal
     /// writing mode starts its lines or its blocks there, and at the bottom when it starts
     /// its lines there, and what is past the origin cannot be scrolled to.
     pub fn viewport_scroll_area(&self) -> kurbo::Rect {
@@ -414,15 +414,12 @@ impl BaseDocument {
         let overflow = (kurbo::Affine::scale(1.0 / scale) * to_icb)
             .transform_rect_bbox(self.root_scrolled_overflow);
         let area = viewport.union(margin_box).union(overflow);
-        let (reverse_x, reverse_y) = root.primary_styles().map_or((false, false), |style| {
-            let wm = style.writing_mode;
-            let inline = wm.direction().is_rtl();
-            let block = wm.block_left_is_end();
-            match wm.swaps_axes() {
-                true => (block, inline),
-                false => (inline, block),
-            }
-        });
+        let wm = self.root_node().principal_writing_mode();
+        let (inline, block) = (wm.direction().is_rtl(), wm.block_left_is_end());
+        let (reverse_x, reverse_y) = match wm.swaps_axes() {
+            true => (block, inline),
+            false => (inline, block),
+        };
         kurbo::Rect::new(
             if reverse_x { area.x0 } else { 0.0 },
             if reverse_y { area.y0 } else { 0.0 },

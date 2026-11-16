@@ -1220,16 +1220,45 @@ impl Node {
             }
         }
 
-        #[cfg(feature = "writing-mode")]
-        {
-            // Own-layout_wm by default: the node's own algorithm reads its style in its own axes
-            let layout_wm = styles.writing_mode;
-            stylo_taffy::TaffyStyloStyle::new_in(styles, flags, layout_wm)
-        }
-        #[cfg(not(feature = "writing-mode"))]
-        {
-            stylo_taffy::TaffyStyloStyle::new(styles, flags)
-        }
+        let document = match self.data {
+            NodeData::Document(_) => Some(self),
+            _ if self.is_element() => self
+                .parent_node()
+                .filter(|parent| matches!(parent.data, NodeData::Document(_))),
+            _ => None,
+        };
+        let own_wm = document.map_or(styles.writing_mode, Node::principal_writing_mode);
+
+        // Own-layout_wm by default: the node's own algorithm reads its style in its own axes
+        let mut style = stylo_taffy::TaffyStyloStyle::new_in(styles, flags, own_wm);
+        style.own_wm = own_wm;
+        style
+    }
+
+    /// For the document node: the document's principal writing mode (CSS Writing Modes 4,
+    /// section 8), which the root element's box and the initial containing block use. It is
+    /// the root element's `writing-mode` and `direction`, or, when the root element is an
+    /// `html` element, those of its first `body` child whose `display` is not `none`.
+    /// Containment on either turns that off (CSS Containment 2, section 3).
+    pub(crate) fn principal_writing_mode(&self) -> stylo_taffy::WritingMode {
+        let Some(root) = self.children.iter().map(|&id| self.with(id)).find(|node| node.is_element())
+        else {
+            return self.writing_mode();
+        };
+        let html = root.data.is_element_with_tag_name(&local_name!("html")) && !root.has_containment();
+        root.children
+            .iter()
+            .map(|&id| self.with(id))
+            .filter(|_| html)
+            .find(|child| {
+                child.data.is_element_with_tag_name(&local_name!("body"))
+                    && child
+                        .primary_styles()
+                        .is_some_and(|style| !style.clone_display().is_none())
+            })
+            .filter(|body| !body.has_containment())
+            .unwrap_or(root)
+            .writing_mode()
     }
 
     /// The node's style for Taffy, expressed in the axes of the writing mode `layout_wm` (the writing
@@ -1244,9 +1273,8 @@ impl Node {
         style
     }
 
-    /// Whether the node has any `contain` value, which blocks `writing-mode` propagation from
-    /// `<body>` to the root (css-writing-modes-3 §8).
-    #[cfg(feature = "writing-mode")]
+    /// Whether the node has any `contain` value, which turns off what the body gives the
+    /// initial containing block and the viewport (CSS Containment 2, section 3).
     pub(crate) fn has_containment(&self) -> bool {
         self.primary_styles()
             .is_some_and(|style| !style.clone_contain().is_empty())
@@ -1266,8 +1294,8 @@ impl Node {
         })
     }
 
-    /// The node's computed `writing-mode` (horizontal-tb for nodes without styles)
-    #[cfg(feature = "writing-mode")]
+    /// The node's computed `writing-mode` and `direction` (horizontal-tb and ltr for nodes
+    /// without styles)
     pub fn writing_mode(&self) -> stylo_taffy::WritingMode {
         self.primary_styles()
             .map(|s| s.writing_mode)
