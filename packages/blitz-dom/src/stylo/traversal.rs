@@ -359,7 +359,8 @@ fn layout_parent_writing_mode(element: BlitzNode<'_>) -> Option<WritingModePrope
 
 /// Marks to be cascaded again each element below the `display: contents` element `contents`,
 /// through further `display: contents` elements, that is an inline-block for a writing mode
-/// other than `layout_parent`'s or an inline box that should now be one, and sets the dirty
+/// other than `layout_parent`'s or an inline box that should now be one, and each of those
+/// `display: contents` elements whose `::before` or `::after` is, and sets the dirty
 /// descendants flag of the `display: contents` elements on the way. Says whether it marked any.
 #[cfg(feature = "writing-mode")]
 fn recascade_stale_inline_blocks(
@@ -378,6 +379,15 @@ fn recascade_stale_inline_blocks(
             continue;
         };
         if style.is_display_contents() {
+            let pseudos = data.styles.pseudos.as_array();
+            if pseudos
+                .iter()
+                .flatten()
+                .any(|pseudo| adjusted_for_another_writing_mode(pseudo, layout_parent))
+            {
+                data.hint.insert(RestyleHint::RECASCADE_SELF);
+                marked = true;
+            }
             drop(data);
             if recascade_stale_inline_blocks(child, layout_parent) {
                 child.0.set_dirty_descendants();
@@ -385,16 +395,26 @@ fn recascade_stale_inline_blocks(
             }
             continue;
         }
-        let shown = style.get_box();
-        let adjustable = shown.original_display == Display::Inline
-            && matches!(shown.display, Display::Inline | Display::InlineBlock);
-        let differs = style.get_inherited_box().writing_mode != layout_parent;
-        if adjustable && (shown.display == Display::InlineBlock) != differs {
+        if adjusted_for_another_writing_mode(style, layout_parent) {
             data.hint.insert(RestyleHint::RECASCADE_SELF);
             marked = true;
         }
     }
     marked
+}
+
+/// Whether `style` is an inline-block for a writing mode other than `layout_parent`'s, or an
+/// inline box that should now be one.
+#[cfg(feature = "writing-mode")]
+fn adjusted_for_another_writing_mode(
+    style: &ComputedValues,
+    layout_parent: WritingModeProperty,
+) -> bool {
+    let shown = style.get_box();
+    let adjustable = shown.original_display == Display::Inline
+        && matches!(shown.display, Display::Inline | Display::InlineBlock);
+    let differs = style.get_inherited_box().writing_mode != layout_parent;
+    adjustable && (shown.display == Display::InlineBlock) != differs
 }
 
 /// Flush updated pseudo-element (`::before`/`::after`) styles from the owning

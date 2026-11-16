@@ -394,6 +394,15 @@ Each patch below fixes something those calls reach, and each has a test in
     children are not rendered. Until then, and if what came is no image, it
     stays an ordinary element showing its fallback, as Acid2's eyes need.
     Four tests, three under the `svg` feature. New.
+63. **Patch 57 also cascades again a nested `display: contents` element
+    whose `::before` or `::after` is stale.** Patch 57 marked only the
+    boxes below a `display: contents` element, so a pseudo-element of a
+    further `display: contents` element inside it kept the display it was
+    adjusted to for its layout parent's old writing mode (Lens, on patch
+    57's head). Such an element is now cascaded again, pseudo-elements
+    with it, when one of them is an inline-block for a writing mode other
+    than its layout parent's or an inline box that should now be one. One
+    test, under `writing-mode`. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

@@ -88,3 +88,49 @@ fn a_box_below_display_contents_follows_its_layout_parents_writing_mode() {
 fn a_box_below_nested_display_contents_follows_its_layout_parents_writing_mode() {
     follows_through(2);
 }
+
+/// The `::before` of the innermost of two nested `display: contents` elements in `vertical-rl`
+/// follows a holder that leaves `vertical-rl` and comes back.
+#[test]
+fn a_pseudo_element_of_nested_display_contents_follows_its_layout_parents_writing_mode() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(
+            "html, div { display: block } .b::before { content: \"b\" }",
+        )],
+        ..DocumentConfig::default()
+    });
+    doc.set_viewport(Viewport::new(800, 600, 1.0, ColorScheme::Light));
+    let document = doc.root_node().id;
+    let html = element(&mut doc, document, "html", "");
+    let holder = element(&mut doc, html, "div", "writing-mode: vertical-rl");
+    let outer = element(
+        &mut doc,
+        holder,
+        "span",
+        "display: contents; writing-mode: vertical-rl",
+    );
+    let inner = element(
+        &mut doc,
+        outer,
+        "span",
+        "display: contents; writing-mode: vertical-rl",
+    );
+    doc.mutate().set_attribute(
+        inner,
+        QualName::new(None, ns!(), LocalName::from("class")),
+        "b",
+    );
+    doc.resolve(0.0);
+    let before = |doc: &BaseDocument| display(doc, doc.get_node(inner).unwrap().before().unwrap());
+    assert_eq!(before(&doc), Display::Inline);
+
+    let style = QualName::new(None, ns!(), LocalName::from("style"));
+    doc.mutate().set_attribute(holder, style.clone(), "");
+    doc.resolve(0.0);
+    assert_eq!(before(&doc), Display::InlineBlock);
+
+    doc.mutate()
+        .set_attribute(holder, style, "writing-mode: vertical-rl");
+    doc.resolve(0.0);
+    assert_eq!(before(&doc), Display::Inline, "and back");
+}
