@@ -380,6 +380,12 @@ Each patch below fixes something those calls reach, and each has a test in
     against. It is now refused like an import past the depth limit, logged
     under the `tracing` feature, and the rest of its sheet applies. Three
     tests. New.
+61. **An image reaches the elements that asked for it after a redirect.**
+    Elements wait on an image by the URL they asked for, and the answer was
+    matched by the URL it came from, so a redirected image reached no
+    element. The image handler now keeps the URL it was asked for, and the
+    answer is matched by that. One test, under the `svg` feature, which
+    is how blitz decodes an image with no image format features on. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

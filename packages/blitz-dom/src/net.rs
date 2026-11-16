@@ -592,17 +592,20 @@ impl NetHandler for ResourceHandler<DocumentSrcHandler> {
 
 pub struct ImageHandler {
     kind: ImageType,
+    /// The URL asked for, which the elements waiting on the image know it by, whatever URL the
+    /// answer comes from after redirects.
+    url: String,
 }
 impl ImageHandler {
-    pub fn new(kind: ImageType) -> Self {
-        Self { kind }
+    pub fn new(kind: ImageType, url: String) -> Self {
+        Self { kind, url }
     }
 }
 
 impl NetHandler for ResourceHandler<ImageHandler> {
-    fn bytes(self: Box<Self>, resolved_url: String, bytes: Bytes) {
+    fn bytes(self: Box<Self>, _resolved_url: String, bytes: Bytes) {
         let result = self.data.parse(bytes);
-        self.respond(resolved_url, result)
+        self.respond(self.data.url.clone(), result)
     }
 }
 
