@@ -526,9 +526,10 @@ impl Node {
             DisplayOutside::Block => true,
             _ => {
                 if display.inside() == DisplayInside::Flow {
-                    self.children
-                        .iter()
-                        .copied()
+                    self.before()
+                        .into_iter()
+                        .chain(self.children.iter().copied())
+                        .chain(self.after())
                         .any(|child_id| self.tree()[child_id].is_or_contains_block())
                 } else {
                     false

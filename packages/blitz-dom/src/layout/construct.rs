@@ -608,7 +608,7 @@ fn collect_layout_children_with_wrap(
         // layout children (text nodes carry no style and cannot be laid out
         // as block/flex/grid items).
         _ => {
-            flush_contents_pseudo_elements(doc, container_node_id);
+            flush_flow_pseudo_elements(doc, container_node_id);
             let mut classification = FlowClassification::default();
             classify_flow_children(doc, container_node_id, &mut classification);
 
@@ -825,18 +825,17 @@ fn flush_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
     }
 }
 
-/// The pseudo-elements of a display: contents child take part in its container's
-/// formatting context, and the classification of the container's children reads them.
-/// They are flushed before that read, so that the first construction sees the
-/// pseudo-elements that a later one would find already made.
-fn flush_contents_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
+/// The pseudo-elements of a display: contents child, and of an inline child laid out in
+/// the container's flow, take part in its formatting context, and the classification of
+/// the container's children reads them. They are flushed before that read, so that the
+/// first construction sees the pseudo-elements that a later one would find already made.
+fn flush_flow_pseudo_elements(doc: &mut BaseDocument, node_id: NodeId) {
     doc.iter_children_mut(node_id, |child_id, doc| {
-        if doc.nodes[child_id]
-            .display_style()
-            .is_some_and(|display| display.inside() == DisplayInside::Contents)
-        {
+        if doc.nodes[child_id].display_style().is_some_and(|display| {
+            display.inside() == DisplayInside::Contents || display.is_inline_flow()
+        }) {
             flush_pseudo_elements(doc, child_id);
-            flush_contents_pseudo_elements(doc, child_id);
+            flush_flow_pseudo_elements(doc, child_id);
         }
     });
 }
@@ -1068,7 +1067,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
     fn flush_inline_pseudos_recursive(doc: &mut BaseDocument, node_id: NodeId) {
         doc.iter_children_mut(node_id, |child_id, doc| {
             flush_pseudo_elements(doc, child_id);
-            let display = doc.nodes[node_id]
+            let display = doc.nodes[child_id]
                 .display_style()
                 .unwrap_or(Display::inline());
             let do_recurse = match (display.outside(), display.inside()) {
