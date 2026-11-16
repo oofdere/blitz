@@ -205,7 +205,14 @@ impl ServoStylesheetLoader for StylesheetLoader {
         supports: Option<ImportSupportsCondition>,
         layer: ImportLayer,
     ) -> ServoArc<Locked<ImportRule>> {
-        if self.import_depth >= MAX_IMPORT_DEPTH || !supports.as_ref().is_none_or(|s| s.enabled) {
+        let resolved = url.url().cloned();
+        #[cfg(feature = "tracing")]
+        if resolved.is_none() {
+            tracing::warn!(url = url.as_str(), "@import URL does not resolve, left out");
+        }
+        let fetched =
+            self.import_depth < MAX_IMPORT_DEPTH && supports.as_ref().is_none_or(|s| s.enabled);
+        let Some(resolved) = resolved.filter(|_| fetched) else {
             return ServoArc::new(lock.wrap(ImportRule {
                 url,
                 stylesheet: ImportSheet::new_refused(),
@@ -213,7 +220,7 @@ impl ServoStylesheetLoader for StylesheetLoader {
                 layer,
                 source_location: location,
             }));
-        }
+        };
 
         let import = ImportRule {
             url,
@@ -223,7 +230,7 @@ impl ServoStylesheetLoader for StylesheetLoader {
             source_location: location,
         };
 
-        let url = import.url.url().unwrap().clone();
+        let url = resolved;
         let import = ServoArc::new(lock.wrap(import));
         self.net_provider.fetch(
             self.doc_id,

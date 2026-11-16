@@ -374,6 +374,12 @@ Each patch below fixes something those calls reach, and each has a test in
     and passes over any other answer. A request given up, by a removal or a
     new request, no longer holds rendering up as a critical resource. Three
     tests. New.
+60. **An `@import` whose URL resolves against nothing is left out.** Its
+    rule unwrapped the resolved URL and panicked: on a page with no base URL
+    yet, and on one whose own URL is a `data:` URL, which nothing resolves
+    against. It is now refused like an import past the depth limit, logged
+    under the `tracing` feature, and the rest of its sheet applies. Three
+    tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
