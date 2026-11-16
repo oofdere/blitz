@@ -299,6 +299,15 @@ Each patch below fixes something those calls reach, and each has a test in
     (section 3) turns off what the body gives the viewport when the root
     element or the body has containment, its `overflow` as well as its writing
     mode (patch 48). Patch 45 did not check. One test. New.
+51. **A transformed root's fixed boxes scroll with the page.** A root element
+    with a transform, a filter or containment is the containing block of its
+    fixed-position descendants (CSS Transforms 1, section 2), and layout placed
+    them against its padding box, but reads, the page's scrollable overflow,
+    hit testing and paint took every fixed box the root element holds to be
+    placed against the viewport. `Node::is_fixed_to_viewport` now decides that
+    in one place. Hit testing and the paint position of a hoisted fixed box
+    never recognised the root element at all, so in hits a fixed box an
+    untransformed root holds moved with the page too. Five tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
