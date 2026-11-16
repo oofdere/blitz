@@ -179,6 +179,7 @@ impl LayoutPassState<'_> {
         };
         let layout = self.nodes[node_id].unrounded_layout_mut();
         layout.size = output.size;
+        layout.scrollable_overflow_rect = output.scrollable_overflow_rect;
         layout.location = location;
         layout.margin = margin;
 
