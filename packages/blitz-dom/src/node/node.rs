@@ -1802,9 +1802,7 @@ impl Node {
         let Some(element) = self.element_data() else {
             return false;
         };
-        if self.flags.is_inline_root()
-            || crate::layout::replaced::is_inline_box_element(element)
-        {
+        if self.flags.is_inline_root() || crate::layout::replaced::is_inline_box_element(element) {
             return false;
         }
         self.primary_styles().is_some_and(|styles| {
