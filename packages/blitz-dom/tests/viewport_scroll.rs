@@ -119,7 +119,10 @@ fn what_a_box_clips_adds_nothing() {
     let list = doc.get_node(list).unwrap().children[0];
     element(&mut doc, list, "div", "width: 3000px; height: 2000px");
     doc.resolve(0.0);
-    assert_eq!(doc.viewport_scroll_area(), kurbo::Rect::new(0.0, 0.0, 800.0, 600.0));
+    assert_eq!(
+        doc.viewport_scroll_area(),
+        kurbo::Rect::new(0.0, 0.0, 800.0, 600.0)
+    );
     assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
 
     let mut doc = page("", "height: 100px; overflow-x: clip");
@@ -127,5 +130,8 @@ fn what_a_box_clips_adds_nothing() {
     let clipped = doc.get_node(clipped).unwrap().children[0];
     element(&mut doc, clipped, "div", "width: 3000px; height: 2000px");
     doc.resolve(0.0);
-    assert_eq!(doc.viewport_scroll_area(), kurbo::Rect::new(0.0, 0.0, 800.0, 2000.0));
+    assert_eq!(
+        doc.viewport_scroll_area(),
+        kurbo::Rect::new(0.0, 0.0, 800.0, 2000.0)
+    );
 }

@@ -484,9 +484,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             convert::oof_item_alignment(input, false, false)?
         };
         if cfg!(feature = "writing-mode") {
-            let reversed = self
-                .layout_wm()
-                .block_start_is_reversed(self.own_wm);
+            let reversed = self.layout_wm().block_start_is_reversed(self.own_wm);
             align.keyword = match align.keyword {
                 taffy::AlignItemsKeyword::SelfStart if reversed => taffy::AlignItemsKeyword::End,
                 taffy::AlignItemsKeyword::SelfStart => taffy::AlignItemsKeyword::Start,

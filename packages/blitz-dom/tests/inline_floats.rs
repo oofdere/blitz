@@ -4,7 +4,9 @@
 //! built with niso's DocumentMutator calls only.
 #![cfg(feature = "floats")]
 
-use blitz_dom::{BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns};
+use blitz_dom::{
+    BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
+};
 use blitz_traits::shell::{ColorScheme, Viewport};
 
 const SCROLLER: &str = "float: right; overflow: scroll; width: 30px; height: 10px";
@@ -20,8 +22,15 @@ fn document() -> BaseDocument {
 
 fn element(doc: &mut BaseDocument, parent: NodeId, name: &str, style: &str) -> NodeId {
     let mut mutator = doc.mutate();
-    let id = mutator.create_element(QualName::new(None, ns!(html), LocalName::from(name)), Vec::new());
-    mutator.set_attribute(id, QualName::new(None, ns!(), LocalName::from("style")), style);
+    let id = mutator.create_element(
+        QualName::new(None, ns!(html), LocalName::from(name)),
+        Vec::new(),
+    );
+    mutator.set_attribute(
+        id,
+        QualName::new(None, ns!(), LocalName::from("style")),
+        style,
+    );
     mutator.append_children(parent, &[id]);
     id
 }
@@ -36,7 +45,11 @@ fn overflow(parent: &str) -> (f32, f32) {
     let scroller = element(&mut doc, parent, "div", SCROLLER);
     element(&mut doc, scroller, "div", "width: 300px; height: 150px");
     doc.resolve(0.0);
-    let overflow = doc.get_node(scroller).unwrap().final_layout().scrollable_overflow_rect;
+    let overflow = doc
+        .get_node(scroller)
+        .unwrap()
+        .final_layout()
+        .scrollable_overflow_rect;
     (overflow.right(), overflow.bottom())
 }
 
@@ -59,9 +72,16 @@ fn a_float_moved_into_an_inline_flow_has_its_new_overflow() {
     let content = element(&mut doc, scroller, "div", "width: 620px; height: 240px");
     doc.resolve(0.0);
     doc.mutate().append_children(span, &[scroller]);
-    doc.mutate()
-        .set_attribute(content, QualName::new(None, ns!(), LocalName::from("style")), "width: 300px; height: 150px");
+    doc.mutate().set_attribute(
+        content,
+        QualName::new(None, ns!(), LocalName::from("style")),
+        "width: 300px; height: 150px",
+    );
     doc.resolve(0.0);
-    let overflow = doc.get_node(scroller).unwrap().final_layout().scrollable_overflow_rect;
+    let overflow = doc
+        .get_node(scroller)
+        .unwrap()
+        .final_layout()
+        .scrollable_overflow_rect;
     assert_eq!((overflow.right(), overflow.bottom()), (300.0, 150.0));
 }

@@ -3,7 +3,9 @@
 //! laid out again. The documents are built with niso's DocumentMutator calls
 //! only.
 
-use blitz_dom::{BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns};
+use blitz_dom::{
+    BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
+};
 use blitz_traits::shell::{ColorScheme, Viewport};
 
 fn document() -> BaseDocument {
@@ -17,9 +19,16 @@ fn document() -> BaseDocument {
 
 fn element(doc: &mut BaseDocument, parent: NodeId, name: &str, style: Option<&str>) -> NodeId {
     let mut mutator = doc.mutate();
-    let id = mutator.create_element(QualName::new(None, ns!(html), LocalName::from(name)), Vec::new());
+    let id = mutator.create_element(
+        QualName::new(None, ns!(html), LocalName::from(name)),
+        Vec::new(),
+    );
     if let Some(style) = style {
-        mutator.set_attribute(id, QualName::new(None, ns!(), LocalName::from("style")), style);
+        mutator.set_attribute(
+            id,
+            QualName::new(None, ns!(), LocalName::from("style")),
+            style,
+        );
     }
     mutator.append_children(parent, &[id]);
     id
@@ -45,7 +54,10 @@ fn a_cached_box_still_places_its_floats() {
     element(&mut kept, inner, "div", Some(float));
     kept.resolve(0.0);
     assert_eq!(height(&kept, html), 40.0);
-    let added = kept.mutate().create_element(QualName::new(None, ns!(html), LocalName::from("div")), Vec::new());
+    let added = kept.mutate().create_element(
+        QualName::new(None, ns!(html), LocalName::from("div")),
+        Vec::new(),
+    );
     kept.mutate().insert_nodes_before(inner, &[added]);
     kept.resolve(0.0);
 

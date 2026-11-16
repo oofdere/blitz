@@ -4,13 +4,22 @@
 //! child that is displayed, and the viewport scrolls from the origin it gives.
 //! Containment on either turns that off (CSS Containment 2, section 3).
 
-use blitz_dom::{BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns};
+use blitz_dom::{
+    BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
+};
 use blitz_traits::shell::{ColorScheme, Viewport};
 
 fn element(doc: &mut BaseDocument, parent: NodeId, name: &str, style: &str) -> NodeId {
     let mut mutator = doc.mutate();
-    let id = mutator.create_element(QualName::new(None, ns!(html), LocalName::from(name)), Vec::new());
-    mutator.set_attribute(id, QualName::new(None, ns!(), LocalName::from("style")), style);
+    let id = mutator.create_element(
+        QualName::new(None, ns!(html), LocalName::from(name)),
+        Vec::new(),
+    );
+    mutator.set_attribute(
+        id,
+        QualName::new(None, ns!(), LocalName::from("style")),
+        style,
+    );
     mutator.append_children(parent, &[id]);
     id
 }
@@ -20,13 +29,18 @@ fn element(doc: &mut BaseDocument, parent: NodeId, name: &str, style: &str) -> N
 /// and the bodies.
 fn page(root: &str, html: &str, bodies: &[&str]) -> (BaseDocument, NodeId, Vec<NodeId>) {
     let mut doc = BaseDocument::new(DocumentConfig {
-        ua_stylesheets: vec![UserAgentStylesheet::parse("html, body, div { display: block }")],
+        ua_stylesheets: vec![UserAgentStylesheet::parse(
+            "html, body, div { display: block }",
+        )],
         ..DocumentConfig::default()
     });
     doc.set_viewport(Viewport::new(800, 600, 1.0, ColorScheme::Light));
     let document = doc.root_node().id;
     let html = element(&mut doc, document, root, html);
-    let bodies = bodies.iter().map(|style| element(&mut doc, html, "body", style)).collect();
+    let bodies = bodies
+        .iter()
+        .map(|style| element(&mut doc, html, "body", style))
+        .collect();
     doc.resolve(0.0);
     (doc, html, bodies)
 }
@@ -42,7 +56,11 @@ fn the_initial_containing_block_takes_the_bodys_direction() {
     let (doc, html, _) = page("html", "width: 300px", &["direction: rtl"]);
     assert_eq!(x(&doc, html), 500.0);
     let (doc, html, _) = page("html", "width: 300px; direction: rtl", &["direction: ltr"]);
-    assert_eq!(x(&doc, html), 0.0, "and its `ltr` over the root element's `rtl`");
+    assert_eq!(
+        x(&doc, html),
+        0.0,
+        "and its `ltr` over the root element's `rtl`"
+    );
 }
 
 /// The root element's box takes the body's `direction`: a body narrower than it sits on

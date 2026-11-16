@@ -1241,11 +1241,16 @@ impl Node {
     /// `html` element, those of its first `body` child whose `display` is not `none`.
     /// Containment on either turns that off (CSS Containment 2, section 3).
     pub(crate) fn principal_writing_mode(&self) -> stylo_taffy::WritingMode {
-        let Some(root) = self.children.iter().map(|&id| self.with(id)).find(|node| node.is_element())
+        let Some(root) = self
+            .children
+            .iter()
+            .map(|&id| self.with(id))
+            .find(|node| node.is_element())
         else {
             return self.writing_mode();
         };
-        let html = root.data.is_element_with_tag_name(&local_name!("html")) && !root.has_containment();
+        let html =
+            root.data.is_element_with_tag_name(&local_name!("html")) && !root.has_containment();
         root.children
             .iter()
             .map(|&id| self.with(id))
@@ -1848,10 +1853,26 @@ impl Node {
             .unwrap_or((Overflow::Visible, Overflow::Visible));
         let size = self.final_layout().size;
         KurboRect::new(
-            if x == Overflow::Visible { overflow.x0 } else { 0.0 },
-            if y == Overflow::Visible { overflow.y0 } else { 0.0 },
-            if x == Overflow::Visible { overflow.x1 } else { size.width as f64 * scale },
-            if y == Overflow::Visible { overflow.y1 } else { size.height as f64 * scale },
+            if x == Overflow::Visible {
+                overflow.x0
+            } else {
+                0.0
+            },
+            if y == Overflow::Visible {
+                overflow.y0
+            } else {
+                0.0
+            },
+            if x == Overflow::Visible {
+                overflow.x1
+            } else {
+                size.width as f64 * scale
+            },
+            if y == Overflow::Visible {
+                overflow.y1
+            } else {
+                size.height as f64 * scale
+            },
         )
     }
 
