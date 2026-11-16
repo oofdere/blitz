@@ -403,6 +403,15 @@ Each patch below fixes something those calls reach, and each has a test in
     with it, when one of them is an inline-block for a writing mode other
     than its layout parent's or an inline box that should now be one. One
     test, under `writing-mode`. New.
+64. **A box in a table that is no table part takes a cell of its own.** A
+    block, flex, grid or table box among a table's cells was left out of
+    the table's grid, so it had no size and the table did not count it
+    (Acid2's `ul` with a `display: table` item). Such a box is now placed
+    in the next free column of its row, as the only content of the
+    anonymous cell CSS 2.1 section 17.2.1 puts around it: it keeps its
+    margins and its own height, and a table keeps its own width. blitz
+    still builds no anonymous box, so consecutive such boxes take a cell
+    each rather than sharing one. Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

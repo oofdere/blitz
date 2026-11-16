@@ -745,9 +745,43 @@ fn collect_table_cells(
         | DisplayInside::FlowRoot
         | DisplayInside::Flex
         | DisplayInside::Grid
+        | DisplayInside::GridLanes
+        | DisplayInside::Table
+            if display.outside() != DisplayOutside::TableCaption =>
+        {
+            // A box that is no table part sits in an anonymous cell (CSS 2.1 17.2.1). blitz
+            // builds no anonymous boxes, so the box itself is placed in the grid as the
+            // anonymous cell's only content: it keeps its margins, it is not stretched to its
+            // row's height, and a table keeps its own width rather than its column's.
+            let mut style = table_taffy_style(&node.primary_styles().unwrap(), wm);
+            style.align_self = Some(taffy::AlignSelf::START);
+            if display.inside() == DisplayInside::Table {
+                style.justify_self = Some(taffy::AlignSelf::START);
+            }
+            let col = cursor.next_free();
+            style.grid_column = taffy::Line {
+                start: style_helpers::auto(),
+                end: style_helpers::span(1),
+            };
+            style.grid_row = taffy::Line {
+                start: style_helpers::line(*row as i16),
+                end: style_helpers::span(1),
+            };
+            cells.push(TableCell {
+                node_id,
+                row: row.saturating_sub(1),
+                column: col,
+                style,
+            });
+            cursor.place(1, 1);
+        }
+        DisplayInside::Flow
+        | DisplayInside::FlowRoot
+        | DisplayInside::Flex
+        | DisplayInside::Grid
         | DisplayInside::GridLanes => {
             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
-            // Probably a table caption: ignore
+            // A table caption: not laid out yet
             // println!(
             //     "Warning: ignoring non-table typed descendent of table ({:?})",
             //     display.inside()
