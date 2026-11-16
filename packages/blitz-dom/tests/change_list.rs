@@ -17,7 +17,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{Duration, Instant};
 
 use blitz_dom::{
-    BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
+    BaseDocument, ColorScheme, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet,
+    Viewport, ns,
 };
 
 fn attr(name: &str) -> QualName {
@@ -316,11 +317,11 @@ fn a_box_moved_out_of_a_hidden_subtree_leaves_its_old_containers_list() {
     assert_layout_lists_consistent(&doc);
 }
 
-const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}.dc{display:contents}";
+const FUZZ_CSS: &str = ".db{display:block}.di{display:inline}.dt{display:table}.dib{display:inline-block}.pa{position:absolute}.pk{position:sticky}.bf::before{content:\"b\";position:absolute}.af::after{content:\"a\";position:fixed}.bs::before{content:\"s\"}.tr{transform:translateX(1px)}.z{z-index:1}.ov{overflow:auto}.dn{display:none}.pr{position:relative}.pf{position:fixed}.fl{display:flex}.dc{display:contents}.fll{float:left}.flr{float:right}.cl{clear:both}.w{width:37px}";
 
-const FUZZ_CLASSES: [&str; 17] = [
+const FUZZ_CLASSES: [&str; 21] = [
     "db", "di", "dt", "dib", "dn", "pa", "pr", "pf", "pk", "bf", "af", "bs", "tr", "z", "ov", "fl",
-    "dc",
+    "dc", "fll", "flr", "cl", "w",
 ];
 
 thread_local! {
@@ -386,6 +387,7 @@ fn fuzz_seed(seed: u64, ops: u32) -> Seed {
         (state % n as u64) as usize
     };
     let (mut doc, body) = page(FUZZ_CSS);
+    doc.set_viewport(Viewport::new(800, 600, 1.0, ColorScheme::Light));
     let mut nodes: Vec<NodeId> = Vec::new();
     let panicked = || Seed::Panicked(LAST_PANIC.with(|p| p.borrow().clone()));
     for _ in 0..ops {
