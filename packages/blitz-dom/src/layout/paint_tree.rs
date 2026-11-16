@@ -32,6 +32,12 @@ use taffy::{Point, Rect};
 /// hoisted by Taffy, otherwise `layout_parent`, which is set for every layout
 /// child by `resolve_layout_children`, anonymous blocks included).
 pub fn hoisted_child_position(tree: &NodeTree, sc_root_id: NodeId, child_id: NodeId) -> Point<f32> {
+    position_up_to(tree, child_id, Some(sc_root_id))
+}
+
+/// The same offset from `stop`, or from the top of the positioning chain
+/// for none.
+fn position_up_to(tree: &NodeTree, child_id: NodeId, stop: Option<NodeId>) -> Point<f32> {
     let child = &tree[child_id];
     let mut position = Point::ZERO;
     let mut current = child.containing_block();
@@ -50,7 +56,7 @@ pub fn hoisted_child_position(tree: &NodeTree, sc_root_id: NodeId, child_id: Nod
     }
 
     while let Some(id) = current {
-        if id == sc_root_id {
+        if Some(id) == stop {
             break;
         }
         let Some(node) = tree.get(id) else {
@@ -303,6 +309,7 @@ impl BaseDocument {
                     self.nodes
                         .get(id)
                         .is_some_and(|n| n.layout_parent.get() != Some(node_id))
+                        && self.tree_order_painter(id).is_none()
                 })
                 .map(|id| {
                     let anchor = self
@@ -363,6 +370,23 @@ impl BaseDocument {
                             }
                         }
                     }
+                } else if let Some(painter) = self.tree_order_painter(child_id) {
+                    // An out-of-flow box contained further out is painted in tree order
+                    // by the positioned box or stacking context around it (CSS 2.1
+                    // Appendix E): here, or by an ancestor this static box lifts it to.
+                    if painter == node_id {
+                        self.attach_hoisted_past_parent(child_id, is_flex_or_grid, &mut entries);
+                    } else {
+                        let is_sc_root = self.nodes[child_id].is_stacking_context_root(false);
+                        self.build_paint_tree_impl(
+                            child_id,
+                            match is_sc_root {
+                                true => None,
+                                false => Some(&mut entries),
+                            },
+                        );
+                        entries.push(HoistedPaintChild::new(child_id, 0));
+                    }
                 }
 
                 while let Some(&(anchor, hoisted_id)) = hoisted_past_parent.get(next_hoisted)
@@ -405,6 +429,42 @@ impl BaseDocument {
             node.sc_contribution_cache.borrow_mut().clear();
             node.stacking_context = Some(Box::new(StackingContext::from_children(entries)));
         }
+    }
+
+    /// The box that paints the out-of-flow box `id` in tree order, when that is
+    /// not its containing block: the nearest box between the two on its
+    /// `layout_parent` chain that paints positioned descendants (a positioned
+    /// box or a stacking context), so that a fixed box inside a `position:
+    /// relative` one paints after that box's earlier positioned descendants and
+    /// before its later ones (CSS 2.1 Appendix E, step 8). Only for a `z-index`
+    /// of `auto` or 0, and none when a box between the two clips its contents,
+    /// which the out-of-flow box escapes.
+    fn tree_order_painter(&self, id: NodeId) -> Option<NodeId> {
+        let node = self.nodes.get(id)?;
+        let containing_block = node.oof_containing_block.get()?;
+        if node.z_index() != 0 {
+            return None;
+        }
+        let mut painter = None;
+        let mut current = node.layout_parent.get()?;
+        while current != containing_block {
+            let ancestor = self.nodes.get(current)?;
+            if ancestor.clips_contents() {
+                return None;
+            }
+            let parent = ancestor.layout_parent.get()?;
+            let in_flex_or_grid = self.nodes[parent].display_style().is_some_and(|display| {
+                matches!(display.inside(), DisplayInside::Flex | DisplayInside::Grid)
+            });
+            if painter.is_none()
+                && (ancestor.is_paint_layer_root()
+                    || ancestor.is_stacking_context_root(in_flex_or_grid))
+            {
+                painter = Some(current);
+            }
+            current = parent;
+        }
+        painter
     }
 
     /// The layout child of `node_id` whose subtree contains `id`, following
@@ -455,24 +515,35 @@ impl Node {
     /// boxes, and boxes that clip their contents. Stacking-context roots are
     /// handled by the caller.
     fn is_paint_layer_root(&self) -> bool {
-        use style::values::computed::{Contain, Overflow};
-
         let Some(style) = self.primary_styles() else {
             return true;
         };
-        let box_style = style.get_box();
-        let (overflow_x, overflow_y) = self
-            .used_overflow()
-            .unwrap_or((Overflow::Visible, Overflow::Visible));
         style.clone_position() != Position::Static
-            || !matches!(overflow_x, Overflow::Visible)
-            || !matches!(overflow_y, Overflow::Visible)
-            || box_style.slow_clone_contain().contains(Contain::PAINT)
+            || self.clips_contents()
             || self.element_data().is_some_and(|e| {
                 e.raster_image_data().is_some()
                     || e.sub_doc_data().is_some()
                     || e.text_input_data().is_some()
             })
+    }
+
+    /// Whether this box cuts off what it holds: its used `overflow` is not
+    /// `visible` on an axis, or it has paint containment.
+    fn clips_contents(&self) -> bool {
+        use style::values::computed::{Contain, Overflow};
+
+        let Some(style) = self.primary_styles() else {
+            return false;
+        };
+        let (overflow_x, overflow_y) = self
+            .used_overflow()
+            .unwrap_or((Overflow::Visible, Overflow::Visible));
+        !matches!(overflow_x, Overflow::Visible)
+            || !matches!(overflow_y, Overflow::Visible)
+            || style
+                .get_box()
+                .slow_clone_contain()
+                .contains(Contain::PAINT)
     }
 
     /// Whether this is a `position: relative` or `sticky` box.
@@ -489,12 +560,37 @@ impl Node {
     /// painted, excluding its own `final_layout().location`, when it is in the
     /// paint list of `painter_id` without being laid out relative to it (a
     /// positioned box lifted past static ancestors).
+    ///
+    /// A painter that is not on the box's positioning chain paints it in tree
+    /// order without containing it (`BaseDocument::tree_order_painter`): the
+    /// offset is then where the box's chain puts it less where the painter's
+    /// own chain puts the painter's scrolled content.
     pub fn lifted_paint_offset(&self, painter_id: NodeId) -> Option<Point<f32>> {
-        match self.containing_block() {
-            Some(id) if id == painter_id => None,
-            None => None,
-            Some(_) => Some(hoisted_child_position(self.tree(), painter_id, self.id)),
+        let containing_block = self.containing_block()?;
+        if containing_block == painter_id {
+            return None;
         }
+        let tree = self.tree();
+        let mut chain = std::iter::successors(Some(containing_block), |&id| {
+            tree.get(id)?.containing_block()
+        });
+        if chain.any(|id| id == painter_id) {
+            return Some(hoisted_child_position(tree, painter_id, self.id));
+        }
+        let at = position_up_to(tree, self.id, None);
+        let mut painter = Point::ZERO;
+        let mut current = Some(painter_id);
+        while let Some(node) = current.and_then(|id| tree.get(id)) {
+            let location = node.final_layout().location;
+            let scroll_offset = *node.scroll_offset();
+            painter.x += location.x - scroll_offset.x as f32;
+            painter.y += location.y - scroll_offset.y as f32;
+            current = node.containing_block();
+        }
+        Some(Point {
+            x: at.x - painter.x,
+            y: at.y - painter.y,
+        })
     }
 }
 

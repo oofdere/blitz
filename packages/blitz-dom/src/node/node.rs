@@ -1648,21 +1648,19 @@ impl Node {
             let child_position = child.taffy_position();
             let mut child_x = x;
             let mut child_y = y;
-            if child_position.is_out_of_flow() {
+            if let Some(offset) = child.lifted_paint_offset(self.id) {
+                child_x -= offset.x;
+                child_y -= offset.y;
+            } else if child_position.is_out_of_flow() && child.is_fixed_to_viewport() {
                 // Fixed-position boxes placed against the viewport do not scroll
                 // with it. (A fixed box whose containing block is a transformed
                 // ancestor, the root element included, scrolls with it like any
                 // other out-of-flow box.)
-                if child.is_fixed_to_viewport() {
-                    child_x -= self.scroll_offset().x as f32;
-                    child_y -= self.scroll_offset().y as f32;
-                    let viewport_scroll = self.tree().viewport_scroll();
-                    child_x -= viewport_scroll.x as f32;
-                    child_y -= viewport_scroll.y as f32;
-                }
-            } else if let Some(offset) = child.lifted_paint_offset(self.id) {
-                child_x -= offset.x;
-                child_y -= offset.y;
+                child_x -= self.scroll_offset().x as f32;
+                child_y -= self.scroll_offset().y as f32;
+                let viewport_scroll = self.tree().viewport_scroll();
+                child_x -= viewport_scroll.x as f32;
+                child_y -= viewport_scroll.y as f32;
             }
             if let Some(hit) = child.hit_inner(child_x, child_y, scale, scrollbar) {
                 return Some(hit);

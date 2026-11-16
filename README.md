@@ -412,6 +412,18 @@ Each patch below fixes something those calls reach, and each has a test in
     margins and its own height, and a table keeps its own width. blitz
     still builds no anonymous box, so consecutive such boxes take a cell
     each rather than sharing one. Two tests. New.
+65. **A fixed or absolutely positioned box is painted in tree order by the
+    positioned box around it.** An out-of-flow box was painted by its
+    containing block, so a fixed box inside a `position: relative` box
+    painted after everything in it, above the positioned boxes that come
+    after it in the tree (Acid2's hidden scalp line). One with a `z-index`
+    of `auto` or 0 is now painted, and hit, by the nearest positioned box or
+    stacking context between it and its containing block, in tree order
+    among that box's positioned descendants (CSS 2.1 Appendix E, step 8),
+    unless a box between them clips, which it escapes.
+    `lifted_paint_offset` gives the offset for a painter that does not
+    contain the box, and hit testing now uses it for an out-of-flow box too.
+    Four tests, one of them with the page scrolled. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -485,9 +497,10 @@ Lens's fuzzer finds the same kind of difference in 6 of 2,000 seeds with an
 800×600 viewport (8 with no viewport, 1 of 300 in its wide mode). The same seeds
 differ before patches 26 to 30. They are not looked into yet.
 
-blitz builds no anonymous table rows and cells (CSS 2.1 17.2.1). A child of a
-`display: table` box that is not a table part (a block, text) gets no box, and
-reads as never laid out, where a browser wraps it in an anonymous cell.
+blitz builds no anonymous table rows and cells (CSS 2.1 17.2.1). Patch 64 puts
+a block, flex, grid or table child of a table in a cell of its own, but text
+straight inside a table part gets no box, and reads as never laid out, where a
+browser wraps it in an anonymous cell.
 
 An inline element with no content on any line has no fragment, and
 `get_client_bounding_rect` answers `None` for it, unless it has a spacer
