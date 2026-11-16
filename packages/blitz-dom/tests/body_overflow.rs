@@ -129,3 +129,19 @@ fn clip_on_the_viewport_is_hidden() {
     doc.scroll_to(html, 0.0, 500.0, ScrollBehavior::Instant);
     assert_eq!(doc.viewport_scroll().y, 500.0);
 }
+
+/// Containment on the root element or on the body keeps the body's `overflow` its own
+/// (CSS Containment 2, section 3): it scrolls by itself, and the viewport takes the root
+/// element's.
+#[test]
+fn containment_keeps_the_bodys_overflow() {
+    for (html, body) in [
+        ("contain: paint", "margin: 0; height: 100px; overflow: auto"),
+        ("", "margin: 0; height: 100px; overflow: auto; contain: paint"),
+    ] {
+        let (mut doc, _, body) = page(html, body);
+        assert_eq!(doc.viewport_overflow(), (Overflow::Visible, Overflow::Visible), "{html}");
+        assert!(!doc.get_node(body).unwrap().gives_overflow_to_viewport());
+        assert_eq!(scrolled(&mut doc, body), (0.0, 1900.0), "{html}");
+    }
+}

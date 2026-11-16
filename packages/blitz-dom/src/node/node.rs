@@ -1809,8 +1809,8 @@ impl Node {
 
     /// Whether this is the element whose `overflow` the viewport takes (CSS Overflow 3,
     /// section 3.3): the root element, or, when that is an `html` element whose own
-    /// `overflow` is `visible` on both axes, its first `body` child. Its box then uses
-    /// `visible`.
+    /// `overflow` is `visible` on both axes, its first `body` child, unless either has
+    /// containment (CSS Containment 2, section 3). Its box then uses `visible`.
     pub fn gives_overflow_to_viewport(&self) -> bool {
         let Some(parent) = self.parent.map(|id| self.with(id)) else {
             return false;
@@ -1823,6 +1823,8 @@ impl Node {
         }
         let html = parent;
         html.data.is_element_with_tag_name(&local_name!("html"))
+            && !html.has_containment()
+            && !self.has_containment()
             && html
                 .parent
                 .is_some_and(|id| matches!(self.with(id).data, NodeData::Document(_)))
