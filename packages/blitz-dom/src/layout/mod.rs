@@ -762,7 +762,13 @@ impl taffy::CacheTree for LayoutPassState<'_> {
         node_id: NodeId,
         inputs: &taffy::LayoutInput,
     ) -> Option<taffy::LayoutOutput> {
+        #[cfg(feature = "writing-mode")]
+        let placer_wm = self.layout_wm;
         let data = self.node_from_id_mut(node_id).try_layout_data_mut()?;
+        #[cfg(feature = "writing-mode")]
+        if data.cache_writing_mode != placer_wm {
+            return None;
+        }
         let mut output = data.cache.get(inputs)?;
         let baselines = data.baseline_cache.get(inputs)?.size;
         let baseline = |value: f32| (!value.is_nan()).then_some(value);
@@ -787,7 +793,14 @@ impl taffy::CacheTree for LayoutPassState<'_> {
             },
             ..layout_output.clone()
         };
+        #[cfg(feature = "writing-mode")]
+        let placer_wm = self.layout_wm;
         let node = self.node_from_id_mut(node_id);
+        #[cfg(feature = "writing-mode")]
+        if node.layout_data().cache_writing_mode != placer_wm {
+            node.clear_layout_cache();
+            node.layout_data_mut().cache_writing_mode = placer_wm;
+        }
         node.cache_mut().store(inputs, layout_output);
         node.layout_data_mut()
             .baseline_cache

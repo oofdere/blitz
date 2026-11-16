@@ -332,6 +332,13 @@ Each patch below fixes something those calls reach, and each has a test in
     horizontal sizes: `height: 100%` stayed auto instead of becoming the
     inline size. Found by niso's frames harness with vertical writing modes
     (seed 2050). Two tests. New.
+56. **A box's layout cache holds only in its placer's writing mode.** Cached
+    results are written in the axes of the box that placed the node, and
+    nothing cleared them when that box's writing mode changed while the
+    node's own did not: a `vertical-rl` box that stopped being orthogonal to
+    its parent when the root turned vertical kept its old size. The cache now
+    records the placer's writing mode and is not used in another. Found by
+    the same harness (seed 2056). One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

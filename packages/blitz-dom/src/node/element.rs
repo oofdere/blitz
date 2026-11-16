@@ -160,6 +160,10 @@ pub struct LayoutData {
     /// recorded by the layout pass for CSSOM geometry lookups.
     #[cfg(feature = "writing-mode")]
     pub writing_mode: stylo_taffy::WritingMode,
+    /// The writing mode of the box that placed this node when the results in `cache` were
+    /// computed. They are written in that box's axes, so they do not hold in another.
+    #[cfg(feature = "writing-mode")]
+    pub cache_writing_mode: stylo_taffy::WritingMode,
 }
 
 impl LayoutData {
@@ -173,6 +177,8 @@ impl LayoutData {
             scrollable_overflow: KurboRect::ZERO,
             #[cfg(feature = "writing-mode")]
             writing_mode: stylo_taffy::WritingMode::empty(),
+            #[cfg(feature = "writing-mode")]
+            cache_writing_mode: stylo_taffy::WritingMode::empty(),
         }
     }
 }
