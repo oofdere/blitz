@@ -187,9 +187,12 @@ fn touch_action_pan_axes(doc: &BaseDocument, node_id: NodeId) -> (bool, bool) {
                 allow_y &= touch_action.intersects(pan_y_flags);
             }
 
-            let scrolls_x = matches!(style.clone_overflow_x(), Overflow::Scroll | Overflow::Auto)
+            let (overflow_x, overflow_y) = node
+                .used_overflow()
+                .unwrap_or((Overflow::Visible, Overflow::Visible));
+            let scrolls_x = matches!(overflow_x, Overflow::Scroll | Overflow::Auto)
                 && node.scroll_width() > node.client_width();
-            let scrolls_y = matches!(style.clone_overflow_y(), Overflow::Scroll | Overflow::Auto)
+            let scrolls_y = matches!(overflow_y, Overflow::Scroll | Overflow::Auto)
                 && node.scroll_height() > node.client_height();
             done_x |= scrolls_x;
             done_y |= scrolls_y;

@@ -1215,6 +1215,9 @@ impl Node {
             if let Some(inline_layout) = el.inline_layout_data.as_deref() {
                 flags |= inline_layout.span_cb_flags;
             }
+            if self.gives_overflow_to_viewport() {
+                flags |= stylo_taffy::StyleFlags::OVERFLOW_TO_VIEWPORT;
+            }
         }
 
         #[cfg(feature = "writing-mode")]
@@ -1650,14 +1653,16 @@ impl Node {
         }
 
         // Line boxes are clipped to the padding box on axes where overflow is not visible.
-        let clips_point = self.primary_styles().is_some_and(|style| {
-            let x = x - self.scroll_offset().x as f32;
-            let y = y - self.scroll_offset().y as f32;
-            (style.clone_overflow_x() != Overflow::Visible
-                && (x < layout.border.left || x > size.width - layout.border.right))
-                || (style.clone_overflow_y() != Overflow::Visible
-                    && (y < layout.border.top || y > size.height - layout.border.bottom))
-        });
+        let clips_point = self
+            .used_overflow()
+            .is_some_and(|(overflow_x, overflow_y)| {
+                let x = x - self.scroll_offset().x as f32;
+                let y = y - self.scroll_offset().y as f32;
+                (overflow_x != Overflow::Visible
+                    && (x < layout.border.left || x > size.width - layout.border.right))
+                    || (overflow_y != Overflow::Visible
+                        && (y < layout.border.top || y > size.height - layout.border.bottom))
+            });
 
         // Inline children
         if self.flags.is_inline_root() {
@@ -1771,6 +1776,41 @@ impl Node {
         self.primary_styles().is_some_and(|styles| {
             let display = styles.clone_display();
             display.outside() == DisplayOutside::Inline && display.inside() == DisplayInside::Flow
+        })
+    }
+
+    /// Whether this is the body whose `overflow` the viewport takes (CSS Overflow 3,
+    /// section 3.3): the first `body` child of an `html` root element whose own
+    /// `overflow` is `visible` on both axes. Its box then uses `visible`.
+    pub fn gives_overflow_to_viewport(&self) -> bool {
+        if !self.data.is_element_with_tag_name(&local_name!("body")) {
+            return false;
+        }
+        let Some(html) = self.parent.map(|id| self.with(id)) else {
+            return false;
+        };
+        html.data.is_element_with_tag_name(&local_name!("html"))
+            && html
+                .parent
+                .is_some_and(|id| matches!(self.with(id).data, NodeData::Document(_)))
+            && html.primary_styles().is_some_and(|style| {
+                style.clone_overflow_x() == Overflow::Visible
+                    && style.clone_overflow_y() == Overflow::Visible
+            })
+            && html.children.iter().find(|&&id| {
+                self.with(id)
+                    .data
+                    .is_element_with_tag_name(&local_name!("body"))
+            }) == Some(&self.id)
+    }
+
+    /// The `overflow` this node's box uses on each axis: its own, or `visible` for the
+    /// body that gives its own to the viewport. `None` for a node with no styles.
+    pub fn used_overflow(&self) -> Option<(Overflow, Overflow)> {
+        let style = self.primary_styles()?;
+        Some(match self.gives_overflow_to_viewport() {
+            true => (Overflow::Visible, Overflow::Visible),
+            false => (style.clone_overflow_x(), style.clone_overflow_y()),
         })
     }
 

@@ -34,6 +34,9 @@ bitflags! {
         const IS_BUTTON = 1 << 3;
         /// Whether the node is a button-type input whose label always uses block layout
         const IS_BUTTON_INPUT = 1 << 4;
+        /// Whether the node is the body whose `overflow` the viewport takes: its own is
+        /// `visible`
+        const OVERFLOW_TO_VIEWPORT = 1 << 5;
     }
 }
 
@@ -168,6 +171,12 @@ impl<T: Deref<Target = ComputedValues>> From<TaffyStyloStyle<T>> for taffy::Styl
         let mut style = convert::to_taffy_style(&value.style);
         value.layout_wm().transpose_style(&mut style);
         style.item_is_replaced = value.flags.contains(StyleFlags::IS_REPLACED);
+        if value.flags.contains(StyleFlags::OVERFLOW_TO_VIEWPORT) {
+            style.overflow = taffy::Point {
+                x: taffy::Overflow::Visible,
+                y: taffy::Overflow::Visible,
+            };
+        }
         style
     }
 }
@@ -210,6 +219,12 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn overflow(&self) -> taffy::Point<taffy::Overflow> {
+        if self.flags.contains(StyleFlags::OVERFLOW_TO_VIEWPORT) {
+            return taffy::Point {
+                x: taffy::Overflow::Visible,
+                y: taffy::Overflow::Visible,
+            };
+        }
         let box_styles = self.style.get_box();
         let overflow = taffy::Point {
             x: convert::overflow(box_styles.overflow_x),

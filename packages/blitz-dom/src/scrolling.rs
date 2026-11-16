@@ -431,6 +431,30 @@ impl BaseDocument {
         )
     }
 
+    /// The `overflow` the viewport takes on each axis (CSS Overflow 3, section 3.3): the
+    /// root element's, or the body's when the root element's is `visible` on both axes
+    /// and the body gives its own to the viewport.
+    pub fn viewport_overflow(&self) -> (Overflow, Overflow) {
+        let visible = (Overflow::Visible, Overflow::Visible);
+        let Some(root) = self.try_root_element() else {
+            return visible;
+        };
+        let own = root.primary_styles().map_or(visible, |style| {
+            (style.clone_overflow_x(), style.clone_overflow_y())
+        });
+        if own != visible {
+            return own;
+        }
+        root.children
+            .iter()
+            .map(|&id| &self.nodes[id])
+            .find(|node| node.gives_overflow_to_viewport())
+            .and_then(|body| body.primary_styles())
+            .map_or(visible, |style| {
+                (style.clone_overflow_x(), style.clone_overflow_y())
+            })
+    }
+
     pub fn scroll_viewport_by(&mut self, x: f64, y: f64) {
         self.scroll_viewport_by_has_changed(x, y);
     }
@@ -493,13 +517,30 @@ impl BaseDocument {
                 let scale = self.viewport.scale() as f64;
                 let window_width = self.viewport.window_size.0 as f64 / scale;
                 let window_height = self.viewport.window_size.1 as f64 / scale;
+                // The viewport scrolls what its `overflow` lets it, as a scroll container does,
+                // and `visible` is `auto` there.
+                let scrollable = |overflow| match overflow {
+                    Overflow::Visible | Overflow::Scroll | Overflow::Auto => true,
+                    Overflow::Hidden => include_hidden,
+                    Overflow::Clip => false,
+                };
+                let (overflow_x, overflow_y) = self.viewport_overflow();
+                let (can_x_scroll, can_y_scroll) = (scrollable(overflow_x), scrollable(overflow_y));
                 let min = Point {
-                    x: area.x0,
-                    y: area.y0,
+                    x: if can_x_scroll { area.x0 } else { 0.0 },
+                    y: if can_y_scroll { area.y0 } else { 0.0 },
                 };
                 let max = Point {
-                    x: area.x1 - window_width,
-                    y: area.y1 - window_height,
+                    x: if can_x_scroll {
+                        area.x1 - window_width
+                    } else {
+                        0.0
+                    },
+                    y: if can_y_scroll {
+                        area.y1 - window_height
+                    } else {
+                        0.0
+                    },
                 };
                 (self.viewport_scroll(), min, max)
             }
@@ -516,13 +557,8 @@ impl BaseDocument {
                     _ => false,
                 };
                 let (can_x_scroll, can_y_scroll) = node
-                    .primary_styles()
-                    .map(|styles| {
-                        (
-                            scrollable(styles.clone_overflow_x()),
-                            scrollable(styles.clone_overflow_y()),
-                        )
-                    })
+                    .used_overflow()
+                    .map(|(x, y)| (scrollable(x), scrollable(y)))
                     .unwrap_or((false, false));
                 let (min, max) = node.scroll_range();
                 let min = Point {

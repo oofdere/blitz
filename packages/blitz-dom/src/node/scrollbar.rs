@@ -80,7 +80,7 @@ impl Node {
     /// `scrollbar-width: none`.
     pub fn wants_scrollbar(&self, axis: AbsoluteAxis) -> bool {
         use style::values::computed::Overflow;
-        let Some(style) = self.primary_styles() else {
+        let Some((overflow_x, overflow_y)) = self.used_overflow() else {
             return false;
         };
         if self.scrollbar_width() == ScrollbarWidth::None {
@@ -88,11 +88,11 @@ impl Node {
         }
         let (overflow, scroll_extent) = match axis {
             AbsoluteAxis::Horizontal => (
-                style.clone_overflow_x(),
+                overflow_x,
                 (self.scroll_width() - self.client_width()) as f64,
             ),
             AbsoluteAxis::Vertical => (
-                style.clone_overflow_y(),
+                overflow_y,
                 (self.scroll_height() - self.client_height()) as f64,
             ),
         };

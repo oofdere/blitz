@@ -311,13 +311,16 @@ impl<'dom, 'a> BlitzDomPainter<'dom, 'a> {
             !display.is_inline_flow() && !is_internal_table_box_other_than_cell
         };
         let element = node.element_data();
+        let (overflow_x, overflow_y) = node
+            .used_overflow()
+            .unwrap_or((box_style.overflow_x, box_style.overflow_y));
         self.root_element_id != Some(node.id)
             && (element.and_then(|e| e.raster_image_data()).is_some()
                 || element.and_then(|e| e.sub_doc_data()).is_some()
                 || element.and_then(|e| e.text_input_data()).is_some()
                 || contain_paint
-                || !matches!(box_style.overflow_x, Overflow::Visible)
-                || !matches!(box_style.overflow_y, Overflow::Visible))
+                || !matches!(overflow_x, Overflow::Visible)
+                || !matches!(overflow_y, Overflow::Visible))
     }
 
     fn draw_text_mask(

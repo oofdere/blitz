@@ -462,9 +462,12 @@ impl Node {
             return true;
         };
         let box_style = style.get_box();
+        let (overflow_x, overflow_y) = self
+            .used_overflow()
+            .unwrap_or((Overflow::Visible, Overflow::Visible));
         style.clone_position() != Position::Static
-            || !matches!(box_style.overflow_x, Overflow::Visible)
-            || !matches!(box_style.overflow_y, Overflow::Visible)
+            || !matches!(overflow_x, Overflow::Visible)
+            || !matches!(overflow_y, Overflow::Visible)
             || box_style.slow_clone_contain().contains(Contain::PAINT)
             || self.element_data().is_some_and(|e| {
                 e.raster_image_data().is_some()
