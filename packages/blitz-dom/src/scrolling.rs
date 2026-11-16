@@ -4,7 +4,7 @@
 use blitz_traits::events::{BlitzScrollEvent, DomEvent, DomEventData};
 use blitz_traits::node_id::NodeId;
 use style::values::computed::Overflow;
-use stylo_taffy::CopyStyleGetters;
+use stylo_taffy::{CopyStyleGetters, WritingModeExt};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::BaseDocument;
@@ -301,13 +301,13 @@ impl BaseDocument {
 
                 if let Some(root) = self.try_root_element() {
                     let root_id = root.id;
-                    let layout = *root.final_layout();
+                    let area = self.viewport_scroll_area();
                     let scale = self.viewport.scale() as f64;
                     let event = BlitzScrollEvent {
                         scroll_top: offset.y,
                         scroll_left: offset.x,
-                        scroll_width: layout.size.width.max(root.scroll_width()) as i32,
-                        scroll_height: layout.size.height.max(root.scroll_height()) as i32,
+                        scroll_width: area.width() as i32,
+                        scroll_height: area.height() as i32,
                         client_width: (self.viewport.window_size.0 as f64 / scale) as i32,
                         client_height: (self.viewport.window_size.1 as f64 / scale) as i32,
                     };
@@ -384,6 +384,53 @@ impl BaseDocument {
         )
     }
 
+    /// The area the viewport scrolls over, in CSS pixels from the origin of the initial
+    /// containing block: the document's scrollable overflow (the root element's margin box
+    /// and the scrollable overflow of what it holds, the boxes the initial containing block
+    /// holds included), at least the viewport, and only as far as it reaches from the
+    /// viewport's scroll origin. That origin is on the right when the root element's
+    /// writing mode starts its lines or its blocks there, and at the bottom when it starts
+    /// its lines there, and what is past the origin cannot be scrolled to.
+    pub fn viewport_scroll_area(&self) -> kurbo::Rect {
+        let scale = self.viewport.scale_f64();
+        let width = self.viewport.window_size.0 as f64 / scale;
+        let height = self.viewport.window_size.1 as f64 / scale;
+        let viewport = kurbo::Rect::new(0.0, 0.0, width, height);
+        let Some(root) = self.try_root_element() else {
+            return viewport;
+        };
+        let layout = root.final_layout();
+        let (x, y) = (layout.location.x as f64, layout.location.y as f64);
+        let margin_box = kurbo::Rect::new(
+            x - layout.margin.left as f64,
+            y - layout.margin.top as f64,
+            x + (layout.size.width + layout.margin.right) as f64,
+            y + (layout.size.height + layout.margin.bottom) as f64,
+        );
+        let mut to_icb = kurbo::Affine::translate((x * scale, y * scale));
+        if let Some(transform) = root.transform().as_deref() {
+            to_icb *= *transform;
+        }
+        let overflow = (kurbo::Affine::scale(1.0 / scale) * to_icb)
+            .transform_rect_bbox(*root.scrollable_overflow());
+        let area = viewport.union(margin_box).union(overflow);
+        let (reverse_x, reverse_y) = root.primary_styles().map_or((false, false), |style| {
+            let wm = style.writing_mode;
+            let inline = wm.direction().is_rtl();
+            let block = wm.block_left_is_end();
+            match wm.swaps_axes() {
+                true => (block, inline),
+                false => (inline, block),
+            }
+        });
+        kurbo::Rect::new(
+            if reverse_x { area.x0 } else { 0.0 },
+            if reverse_y { area.y0 } else { 0.0 },
+            if reverse_x { width } else { area.x1 },
+            if reverse_y { height } else { area.y1 },
+        )
+    }
+
     pub fn scroll_viewport_by(&mut self, x: f64, y: f64) {
         self.scroll_viewport_by_has_changed(x, y);
     }
@@ -442,28 +489,19 @@ impl BaseDocument {
     ) -> (Point<f64>, Point<f64>, Point<f64>) {
         match self.canonical_scroll_target(target) {
             ScrollTarget::Viewport => {
-                // The viewport scrolls the root element's scrollable overflow, which includes
-                // both the root element itself and any content which overflows it (e.g. when
-                // the root element has a fixed height but its content is taller). A document
-                // without a root element has no scrollable content.
-                let (content_width, content_height) = match self.try_root_element() {
-                    Some(root) => {
-                        let layout = root.final_layout();
-                        (
-                            layout.size.width.max(root.scroll_width()) as f64,
-                            layout.size.height.max(root.scroll_height()) as f64,
-                        )
-                    }
-                    None => (0.0, 0.0),
-                };
+                let area = self.viewport_scroll_area();
                 let scale = self.viewport.scale() as f64;
                 let window_width = self.viewport.window_size.0 as f64 / scale;
                 let window_height = self.viewport.window_size.1 as f64 / scale;
-                let max = Point {
-                    x: (content_width - window_width).max(0.0),
-                    y: (content_height - window_height).max(0.0),
+                let min = Point {
+                    x: area.x0,
+                    y: area.y0,
                 };
-                (self.viewport_scroll(), Point::ZERO, max)
+                let max = Point {
+                    x: area.x1 - window_width,
+                    y: area.y1 - window_height,
+                };
+                (self.viewport_scroll(), min, max)
             }
             ScrollTarget::Node(node_id) => {
                 let Some(node) = self.nodes.get(node_id) else {
