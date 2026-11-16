@@ -439,7 +439,7 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
     };
 
     // Table layout bakes the sizes of the table and its internal boxes into the table
-    // context when the table is constructed.
+    // context when the table is constructed, in the table's writing mode.
     let table_needs_rebuild = || {
         matches!(
             new.get_box().display.inside(),
@@ -453,7 +453,8 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
                 | DisplayInside::TableCell
         ) && (old.get_position() != new.get_position()
             || old.get_padding() != new.get_padding()
-            || old.get_border() != new.get_border())
+            || old.get_border() != new.get_border()
+            || (cfg!(feature = "writing-mode") && old.writing_mode != new.writing_mode))
     };
 
     #[allow(

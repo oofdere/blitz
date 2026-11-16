@@ -325,6 +325,13 @@ Each patch below fixes something those calls reach, and each has a test in
     its `display` is `none`, and Gecko does not. This follows Blink: the
     first `body`, unless it is not displayed. One test changed, one case
     added.
+55. **A table builds its grid again when its writing mode changes.** The
+    table context holds the styles of the table and its parts converted into
+    the table's writing mode, and a change to `writing-mode` only relaid the
+    table out, so a table that turned vertical after a layout kept its
+    horizontal sizes: `height: 100%` stayed auto instead of becoming the
+    inline size. Found by niso's frames harness with vertical writing modes
+    (seed 2050). Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
