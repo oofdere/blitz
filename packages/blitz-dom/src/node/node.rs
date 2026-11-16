@@ -1837,6 +1837,22 @@ impl Node {
             }) == Some(&self.id)
     }
 
+    /// What of `overflow`, this node's scrollable overflow in device pixels, reaches its
+    /// parent's: on an axis whose `overflow` it uses is not `visible`, it clips its content
+    /// to its border box, and only that reaches it.
+    pub(crate) fn overflow_given_to_parent(&self, overflow: KurboRect, scale: f64) -> KurboRect {
+        let (x, y) = self
+            .used_overflow()
+            .unwrap_or((Overflow::Visible, Overflow::Visible));
+        let size = self.final_layout().size;
+        KurboRect::new(
+            if x == Overflow::Visible { overflow.x0 } else { 0.0 },
+            if y == Overflow::Visible { overflow.y0 } else { 0.0 },
+            if x == Overflow::Visible { overflow.x1 } else { size.width as f64 * scale },
+            if y == Overflow::Visible { overflow.y1 } else { size.height as f64 * scale },
+        )
+    }
+
     /// The `overflow` this node's box uses on each axis: its own, or `visible` for the
     /// element that gives its own to the viewport. `None` for a node with no styles.
     pub fn used_overflow(&self) -> Option<(Overflow, Overflow)> {

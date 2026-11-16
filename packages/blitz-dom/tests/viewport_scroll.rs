@@ -109,3 +109,23 @@ fn a_fixed_box_does_not_count() {
     );
     assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
 }
+
+/// What a box clips adds nothing past its border box: content a scroll container scrolls
+/// is not the viewport's to scroll, and a box that clips one axis clips only that one.
+#[test]
+fn what_a_box_clips_adds_nothing() {
+    let mut doc = page("", "height: 100px; overflow: auto");
+    let list = doc.root_element().children[0];
+    let list = doc.get_node(list).unwrap().children[0];
+    element(&mut doc, list, "div", "width: 3000px; height: 2000px");
+    doc.resolve(0.0);
+    assert_eq!(doc.viewport_scroll_area(), kurbo::Rect::new(0.0, 0.0, 800.0, 600.0));
+    assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
+
+    let mut doc = page("", "height: 100px; overflow-x: clip");
+    let clipped = doc.root_element().children[0];
+    let clipped = doc.get_node(clipped).unwrap().children[0];
+    element(&mut doc, clipped, "div", "width: 3000px; height: 2000px");
+    doc.resolve(0.0);
+    assert_eq!(doc.viewport_scroll_area(), kurbo::Rect::new(0.0, 0.0, 800.0, 2000.0));
+}

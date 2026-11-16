@@ -190,7 +190,7 @@ impl BaseDocument {
                 transform *= *t
             }
 
-            let overflow = *node.scrollable_overflow();
+            let overflow = node.overflow_given_to_parent(*node.scrollable_overflow(), scale);
             return transform.transform_rect_bbox(overflow);
         }
 
@@ -256,7 +256,7 @@ impl BaseDocument {
             Affine::translate((scaled_x, scaled_y))
         };
 
-        full.transform_rect_bbox(overflow)
+        full.transform_rect_bbox(self.nodes[node_id].overflow_given_to_parent(overflow, scale))
     }
 
     /// Ensure that the layout_children field is populated for all nodes
