@@ -33,7 +33,8 @@ is unchanged and keeps its own terms.
 
 ### How niso uses it
 
-niso depends on `blitz-dom` with default features off and `system-fonts` on.
+niso depends on `blitz-dom` with default features off and `system-fonts` and
+`floats` on.
 It keeps the DOM on its own side and applies each task's changes to a
 `BaseDocument` through `DocumentMutator`, with these calls only:
 
@@ -265,6 +266,12 @@ Each patch below fixes something those calls reach, and each has a test in
     its own box uses `visible`, as the body's does once it gives its
     overflow. `clip` on the viewport is read as `hidden` (the same
     section): code can scroll the page and the user cannot. Two tests. New.
+47. **A float in an inline flow keeps its scrollable overflow.** Inline layout
+    places a float it meets in the block formatting context and set its size,
+    place and margins, but not the scrollable overflow its own layout gave. A
+    floated scroll container in a `span` read none on a page built fresh, and
+    the overflow of an older layout on a page edited after one. Two tests,
+    with the `floats` feature. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -277,7 +284,8 @@ fuzzer's mode that changes a style sheet (seed 1210), and patches 39 and 40 from
 its viewport mode (14 seeds, and seed 59). Patch 41 comes from the same mode
 as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
 scroll offsets (`read77`), patch 45 from propagating the body's overflow as
-CSS Overflow 3 says, and patch 46 from Lens's two gaps in patch 45.
+CSS Overflow 3 says, patch 46 from Lens's two gaps in patch 45, and patch 47
+from niso's frames fuzzer (seed 2121).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
@@ -348,6 +356,7 @@ An inline element with no content on any line has no fragment, and
 ```
 cargo test -p blitz-dom --no-default-features --features system-fonts \
   --test change_list --test ua_stylesheet --test rects --test hidden
+cargo test -p blitz-dom --no-default-features --features system-fonts,floats
 CHANGE_LIST_FUZZ_SEEDS=20000 cargo test --release -p blitz-dom \
   --no-default-features --features system-fonts \
   --test change_list -- --ignored --nocapture change_list_fuzz
