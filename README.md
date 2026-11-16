@@ -46,6 +46,14 @@ It keeps the DOM on its own side and applies each task's changes to a
 - an attribute is set or removed: `set_attribute` or `clear_attribute`;
 - a text node's data is set: `set_node_text`.
 
+None of these calls checks that a node is not put under itself, and once one
+is, its parents make a loop and blitz's walks up the tree never end, as
+`reset_form_owner` does for each node put in. niso never makes one: its tree
+refuses to put a node under itself (the DOM's pre-insert validity, a
+`HierarchyRequestError`), and a task's changes are a record in the order they
+were made, so the copy is a valid tree after each change. Only a change list cut
+down by hand, as a minimizer makes them, gets there.
+
 Each patch below fixes something those calls reach, and each has a test in
 `packages/blitz-dom/tests/` that fails without it.
 
