@@ -109,6 +109,8 @@ fn casing_language(lang: LanguageIdentifier) -> LanguageIdentifier {
 pub(crate) struct TextTransformer {
     /// The offset in the builder's text of the last forced word boundary.
     context_start: usize,
+    /// What the inline elements' spacers just pushed ask of the next text.
+    pub(crate) edges: crate::layout::inline::Edges,
     /// Reused buffer for the context followed by the text to be capitalized.
     segmentation_buffer: String,
     /// Reused buffer for the transformed text.

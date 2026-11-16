@@ -349,6 +349,22 @@ Each patch below fixes something those calls reach, and each has a test in
     whose `display` was adjusted for a writing mode other than their layout
     parent's are cascaded again, and only those. Found by the same harness
     (seed 2473). Two tests. New.
+58. **An inline element's margin, border and padding take up width in its
+    line.** Parley has no edge spacing on a span, so they took none: text
+    after a padded link sat where it would without the padding. Each
+    non-atomic inline element whose inline-start or inline-end margin, or
+    border and padding, is not zero now gets a spacer at that edge: a
+    zero-high in-flow inline box as wide as that margin, or as that border
+    and padding, sized when the line is laid out, so percentages are of the
+    containing block. Start and end follow the element's `direction`. Word
+    joiners, and a line-break override that keeps Parley from breaking beside
+    one, keep each spacer to its element's content and to what comes before
+    or after it unless white space comes between them, and white space after
+    a spacer collapses with white space before it. The margin spacers are not
+    part of the element's client rectangles, the others are, and the
+    selected text and `innerText` leave the spacers and their joiners out.
+    `InlineSpacer::from_id` tells a spacer's inline box from an atomic
+    inline's. Twelve tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -427,7 +443,16 @@ blitz builds no anonymous table rows and cells (CSS 2.1 17.2.1). A child of a
 reads as never laid out, where a browser wraps it in an anonymous cell.
 
 An inline element with no content on any line has no fragment, and
-`get_client_bounding_rect` answers `None` for it.
+`get_client_bounding_rect` answers `None` for it, unless it has a spacer
+(patch 58): then its rectangle is its spacers', with no height.
+
+A spacer (patch 58) is a U+FFFC in the text, which the Unicode bidi algorithm
+places as a neutral: in an element whose `direction` differs from its text's,
+the start spacer goes where that text's direction puts it, not at the
+element's start. A spacer is glued to what comes before or after it unless
+white space comes between, so a break a browser would allow there for another
+reason (after a hyphen, between ideographs) is lost, and `text-transform:
+capitalize` sees a spacer as a word boundary.
 
 ### Running the tests
 

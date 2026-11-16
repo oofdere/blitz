@@ -2045,7 +2045,12 @@ impl Node {
                         union(&mut line_rect, x0, y0, x1, y1);
                     }
                     PositionedLayoutItem::InlineBox(inline_box) => {
-                        if !is_in_target(NodeId::from_u64(inline_box.id)) {
+                        let node = match crate::InlineSpacer::from_id(inline_box.id) {
+                            Some(spacer) if spacer.margin => continue,
+                            Some(spacer) => spacer.node,
+                            None => NodeId::from_u64(inline_box.id),
+                        };
+                        if !is_in_target(node) {
                             continue;
                         }
                         let x0 = inline_box.x;

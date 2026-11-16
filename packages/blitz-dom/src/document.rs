@@ -2936,7 +2936,10 @@ impl BaseDocument {
             let text = &inline_layout.text[*start..*end];
             result.extend(
                 text.char_indices()
-                    .filter(|&(i, _)| !inline_layout.is_inline_box_char(start + i))
+                    .filter(|&(i, _)| {
+                        !inline_layout.is_inline_box_char(start + i)
+                            && !inline_layout.is_edge_spacing(start + i)
+                    })
                     .map(|(_, c)| c),
             );
         }

@@ -12,6 +12,7 @@ use style::{
 };
 use stylo_taffy::CopyStyleGetters;
 
+use super::spacer;
 use crate::{
     NodeData,
     layout::list::BULLET_FONT_FAMILY,
@@ -115,6 +116,9 @@ pub(crate) fn build_inline_layout_into(
         );
     }
 
+    if builder.text().contains('\u{2060}') {
+        builder.set_line_break_override(Some(spacer::JOINED));
+    }
     text_layout.text = builder.build_into(&mut text_layout.layout);
     text_layout.holds_laid_out_lines = false;
     return;
@@ -202,6 +206,7 @@ pub(crate) fn build_inline_layout_into(
                         if is_inline_box_element(tag_name) {
                             if box_kind == InlineBoxKind::InFlow {
                                 text_transformer.word_break(builder);
+                                text_transformer.edges.clear();
                             }
                             builder.push_inline_box(InlineBox {
                                 id: node_id.as_u64(),
@@ -228,6 +233,7 @@ pub(crate) fn build_inline_layout_into(
                             builder.push_text("\n");
                             builder.pop_style_span();
                             text_transformer.word_break(builder);
+                            text_transformer.edges.clear();
                         } else {
                             // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                             let style = node
@@ -238,7 +244,10 @@ pub(crate) fn build_inline_layout_into(
                                     ..Default::default()
                                 });
 
+                            let start =
+                                spacer::start_outside(builder, &mut text_transformer.edges, node);
                             builder.push_style_span(style);
+                            spacer::start_inside(builder, node, start);
 
                             if let Some(before_id) = node.before() {
                                 build_inline_layout_recursive(
@@ -269,13 +278,17 @@ pub(crate) fn build_inline_layout_into(
                                 );
                             }
 
+                            let end =
+                                spacer::end_inside(builder, &mut text_transformer.edges, node);
                             builder.pop_style_span();
+                            spacer::end_outside(builder, node, end);
                         }
                     }
                     // Inline box
                     (_, _) => {
                         if box_kind == InlineBoxKind::InFlow {
                             text_transformer.word_break(builder);
+                            text_transformer.edges.clear();
                         }
                         builder.push_inline_box(InlineBox {
                             id: node_id.as_u64(),
@@ -298,9 +311,17 @@ pub(crate) fn build_inline_layout_into(
                 // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);
                 // dbg!(&data.content);
 
+                let collapse = node
+                    .parent
+                    .and_then(|parent| nodes[parent].primary_styles())
+                    .map(|s| stylo_to_parley::white_space_collapse(s.clone_white_space_collapse()))
+                    .unwrap_or(WhiteSpaceCollapse::Collapse);
+                let mut edges = std::mem::take(&mut text_transformer.edges);
                 let text =
                     text_transformer.transform(&data.content, parent_text_transform, builder);
+                let text = edges.text(builder, text, collapse);
                 builder.push_text(text);
+                text_transformer.edges = edges;
             }
             NodeData::Comment { .. } => {
                 // node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);

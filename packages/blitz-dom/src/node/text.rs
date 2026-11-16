@@ -67,6 +67,30 @@ impl TextLayout {
                 .any(|ibox| ibox.kind == InlineBoxKind::InFlow && ibox.index == byte_index)
     }
 
+    /// Whether `byte_index` of `text` is a character that is there only to hold an inline
+    /// element's margin, border or padding open: a spacer's U+FFFC, or a word joiner beside one.
+    pub fn is_edge_spacing(&self, byte_index: usize) -> bool {
+        let is_spacer = |index: usize| {
+            self.layout
+                .inline_boxes()
+                .any(|ibox| ibox.index == index && crate::InlineSpacer::from_id(ibox.id).is_some())
+        };
+        let Some(rest) = self.text.get(byte_index..) else {
+            return false;
+        };
+        if rest.starts_with(INLINE_BOX_CHAR) {
+            return is_spacer(byte_index);
+        }
+        if !rest.starts_with(WORD_JOINER) {
+            return false;
+        }
+        let before = self.text[..byte_index]
+            .strip_suffix(INLINE_BOX_CHAR)
+            .is_some_and(|before| is_spacer(before.len()));
+        let after = byte_index + WORD_JOINER.len_utf8();
+        before || self.text[after..].starts_with(INLINE_BOX_CHAR) && is_spacer(after)
+    }
+
     /// The byte index in `text` of the U+FFFC character that stands in for `node_id`, if it is
     /// an in-flow inline box of this layout.
     pub fn inline_box_char_index(&self, node_id: NodeId) -> Option<usize> {
@@ -79,6 +103,8 @@ impl TextLayout {
 
 /// The character Parley places in the text for each in-flow inline box.
 pub const INLINE_BOX_CHAR: char = '\u{FFFC}';
+
+const WORD_JOINER: char = '\u{2060}';
 
 impl std::fmt::Debug for TextLayout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

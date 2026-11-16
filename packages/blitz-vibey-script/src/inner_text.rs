@@ -221,6 +221,7 @@ impl InnerTextCollector {
                     }
                     if range.start >= marker_len
                         && !layout.is_inline_box_char(range.start)
+                        && !layout.is_edge_spacing(range.start)
                         && include(&cluster.style().brush)
                     {
                         self.push_str(&text[range]);
@@ -234,6 +235,9 @@ impl InnerTextCollector {
     }
 
     fn visit_inline_box(&mut self, root: &Node, id: u64, filter: Option<NodeId>) {
+        if blitz_dom::InlineSpacer::from_id(id).is_some() {
+            return;
+        }
         let node = root.with(NodeId::from_u64(id));
         if filter.is_none_or(|target| is_inclusive_descendant_of(node, target)) {
             self.visit(node, None);

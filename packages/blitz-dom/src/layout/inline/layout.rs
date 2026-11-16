@@ -23,6 +23,7 @@ use taffy::{
 
 use stylo_taffy::StyleFlags;
 
+use super::spacer::InlineSpacer;
 use crate::layout::LayoutPassState;
 use crate::layout::resolve_calc_value;
 use crate::stylo_to_parley;
@@ -511,6 +512,13 @@ impl LayoutPassState<'_> {
         let inline_box_count = inline_layout.layout.inline_boxes().len();
         for index in 0..inline_box_count {
             inline_layout.layout.edit_inline_box(index, |ibox| {
+                if let Some(spacer) = InlineSpacer::from_id(ibox.id) {
+                    let node = &self.nodes[spacer.node];
+                    ibox.width = spacer.width(node, child_inputs.parent_size.width) * scale;
+                    ibox.height = 0.0;
+                    ibox.baseline = None;
+                    return;
+                }
                 let style = self.child_layout_style(&self.nodes[NodeId::from_u64(ibox.id)]);
                 let margin = style
                     .margin()
@@ -627,6 +635,9 @@ impl LayoutPassState<'_> {
                     AvailableSpace::MinContent => {
                         let mut width: f32 = 0.0;
                         for ibox in inline_layout.layout.inline_boxes() {
+                            if InlineSpacer::from_id(ibox.id).is_some() {
+                                continue;
+                            }
                             let (is_floated, margin) = {
                                 let style =
                                     self.child_layout_style(&self.nodes[NodeId::from_u64(ibox.id)]);
@@ -664,6 +675,9 @@ impl LayoutPassState<'_> {
                         let mut right_band: f32 = 0.0;
                         let mut width: f32 = 0.0;
                         for ibox in inline_layout.layout.inline_boxes() {
+                            if InlineSpacer::from_id(ibox.id).is_some() {
+                                continue;
+                            }
                             let (float, clear, margin) = {
                                 let style =
                                     self.child_layout_style(&self.nodes[NodeId::from_u64(ibox.id)]);
@@ -1122,6 +1136,10 @@ impl LayoutPassState<'_> {
                     line_has_in_flow_content |= run.advance() > 0.0;
                 }
                 if let parley::layout::PositionedLayoutItem::InlineBox(ibox) = item {
+                    if InlineSpacer::from_id(ibox.id).is_some() {
+                        line_has_in_flow_content |= ibox.width != 0.0;
+                        continue;
+                    }
                     let order = ibox_order;
                     ibox_order += 1;
                     if inputs.run_mode == RunMode::PerformLayout {
