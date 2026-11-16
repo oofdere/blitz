@@ -26,6 +26,10 @@ use style::{
     traversal::{DomTraversal, recalc_style_at, resolve_style},
     traversal_flags::TraversalFlags,
 };
+#[cfg(feature = "writing-mode")]
+use style::{
+    computed_values::writing_mode::T as WritingModeProperty, values::specified::box_::Display,
+};
 
 use super::dom::BlitzNode;
 
@@ -276,22 +280,16 @@ impl<'dom> DomTraversal<BlitzNode<'dom>> for RecalcStyle<'_> {
             // An inline box whose writing mode differs from its layout parent's is made an
             // inline-block when it is styled. Below a `display: contents` element that parent is
             // further up, and Stylo cascades no further than this element when its own style comes
-            // out unchanged, so its children are cascaded again whenever it is.
+            // out unchanged, so the boxes below it that were made so, or not, for a writing mode
+            // their layout parent no longer has are cascaded again.
             #[cfg(feature = "writing-mode")]
-            if !data.hint.is_empty()
-                && data
-                    .styles
-                    .get_primary()
-                    .is_some_and(|style| style.is_display_contents())
+            if data
+                .styles
+                .get_primary()
+                .is_some_and(|style| style.is_display_contents())
+                && let Some(layout_parent) = layout_parent_writing_mode(el)
+                && recascade_stale_inline_blocks(el, layout_parent)
             {
-                for child in el.as_node().traversal_children() {
-                    let Some(child) = child.as_element() else {
-                        continue;
-                    };
-                    if let Some(mut child_data) = child.mutate_data() {
-                        child_data.hint.insert(RestyleHint::RECASCADE_SELF);
-                    }
-                }
                 el.0.set_dirty_descendants();
             }
 
@@ -341,6 +339,62 @@ impl<'dom> DomTraversal<BlitzNode<'dom>> for RecalcStyle<'_> {
     fn shared_context(&self) -> &SharedStyleContext<'_> {
         &self.context
     }
+}
+
+/// The `writing-mode` of the nearest ancestor of `element` that is not `display: contents`: the
+/// layout parent Stylo adjusts `element`'s children against.
+#[cfg(feature = "writing-mode")]
+fn layout_parent_writing_mode(element: BlitzNode<'_>) -> Option<WritingModeProperty> {
+    let mut parent = TElement::traversal_parent(&element);
+    while let Some(ancestor) = parent {
+        let data = ancestor.borrow_data()?;
+        let style = data.styles.get_primary()?;
+        if !style.is_display_contents() {
+            return Some(style.get_inherited_box().writing_mode);
+        }
+        parent = TElement::traversal_parent(&ancestor);
+    }
+    None
+}
+
+/// Marks to be cascaded again each element below the `display: contents` element `contents`,
+/// through further `display: contents` elements, that is an inline-block for a writing mode
+/// other than `layout_parent`'s or an inline box that should now be one, and sets the dirty
+/// descendants flag of the `display: contents` elements on the way. Says whether it marked any.
+#[cfg(feature = "writing-mode")]
+fn recascade_stale_inline_blocks(
+    contents: BlitzNode<'_>,
+    layout_parent: WritingModeProperty,
+) -> bool {
+    let mut marked = false;
+    for child in contents.as_node().traversal_children() {
+        let Some(child) = child.as_element() else {
+            continue;
+        };
+        let Some(mut data) = child.mutate_data() else {
+            continue;
+        };
+        let Some(style) = data.styles.get_primary() else {
+            continue;
+        };
+        if style.is_display_contents() {
+            drop(data);
+            if recascade_stale_inline_blocks(child, layout_parent) {
+                child.0.set_dirty_descendants();
+                marked = true;
+            }
+            continue;
+        }
+        let shown = style.get_box();
+        let adjustable = shown.original_display == Display::Inline
+            && matches!(shown.display, Display::Inline | Display::InlineBlock);
+        let differs = style.get_inherited_box().writing_mode != layout_parent;
+        if adjustable && (shown.display == Display::InlineBlock) != differs {
+            data.hint.insert(RestyleHint::RECASCADE_SELF);
+            marked = true;
+        }
+    }
+    marked
 }
 
 /// Flush updated pseudo-element (`::before`/`::after`) styles from the owning
