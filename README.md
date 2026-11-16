@@ -440,6 +440,14 @@ Each patch below fixes something those calls reach, and each has a test in
     when the table was built, so a later change to its size, margin, border
     or padding went unseen. A change to its style now builds the table
     again. One test. New.
+69. **A box that starts or stops painting its positioned descendants
+    builds its paint lists again.** Which box paints an out-of-flow box in
+    tree order (patch 65) depends on the boxes between it and its
+    containing block, but a static box between them whose subtree had not
+    changed kept its old lists, so a box that became positioned did not
+    paint the fixed box inside it. A box that starts or stops being a
+    stacking context or a paint layer now builds the paint lists of its
+    whole subtree again. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -454,9 +462,10 @@ as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
 scroll offsets (`read77`), patch 45 from propagating the body's overflow as
 CSS Overflow 3 says, patch 46 from Lens's two gaps in patch 45, and patch 47
 from niso's frames fuzzer (seed 2121). Patch 48 is the first of niso's list for
-later, and patches 49 and 50 came up while it was made. Patches 67 and 68 come
-from niso's frames harnesses (`81f` and `81v`), where patches 58 and 64 left
-incremental frames that a fresh layout does not give (seeds 172 and 2019).
+later, and patches 49 and 50 came up while it was made. Patches 67 to 69 come
+from niso's frames harnesses (`81f` and `81v`), where patches 58, 64 and 65 left
+incremental frames that a fresh layout does not give (seeds 172, 2019, and
+1038, 1732, 3167 and 9102).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list

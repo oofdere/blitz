@@ -387,6 +387,10 @@ pub(crate) struct DocumentScratch {
     /// `(paint order, node)` pairs of the paint lists under construction in
     /// `build_paint_tree_impl`.
     pub(crate) keyed_children: Vec<((i32, i32), NodeId)>,
+    /// Whether `build_paint_tree_impl` builds every node it reaches, clean or
+    /// not: set below a box that started or stopped painting its positioned
+    /// descendants.
+    pub(crate) rebuild_paint: bool,
 }
 
 bitflags! {

@@ -243,7 +243,8 @@ impl BaseDocument {
             // node itself, so the role the caller resolved must match the one
             // this node was last built with.
             let role_unchanged = node.stacking_context.is_some() == stacking_context.is_none();
-            let clean = role_unchanged
+            let clean = !self.scratch.rebuild_paint
+                && role_unchanged
                 && !node
                     .damage()
                     .unwrap_or(ALL_DAMAGE)
@@ -260,6 +261,15 @@ impl BaseDocument {
         let Some(display) = self.nodes[node_id].display_style() else {
             return;
         };
+
+        // Which box paints an out-of-flow box contained further out depends on the boxes between
+        // the two (`tree_order_painter`), which may be above a subtree that is skipped as clean.
+        // So a box that starts or stops painting its positioned descendants builds its whole
+        // subtree again.
+        let paints = stacking_context.is_none() || self.nodes[node_id].is_paint_layer_root();
+        let rebuild_paint = self.scratch.rebuild_paint;
+        self.scratch.rebuild_paint |=
+            self.nodes[node_id].paints_positioned.replace(paints) != paints;
 
         // Entries hoisted out of this subtree are collected directly into the
         // storage that will hold them afterwards: the node's own stacking
@@ -429,6 +439,7 @@ impl BaseDocument {
             node.sc_contribution_cache.borrow_mut().clear();
             node.stacking_context = Some(Box::new(StackingContext::from_children(entries)));
         }
+        self.scratch.rebuild_paint = rebuild_paint;
     }
 
     /// The box that paints the out-of-flow box `id` in tree order, when that is

@@ -117,3 +117,49 @@ fn a_fixed_box_painted_in_tree_order_stays_put_when_the_page_scrolls() {
         "the box before it scrolled"
     );
 }
+
+/// A fixed box two static boxes down, with the outer of the two styled
+/// `outer`, and the outer box's paint list.
+fn nested(outer: &str) -> (BaseDocument, NodeId) {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "");
+    let body = create(&mut doc, html, "margin: 0");
+    let outer_box = create(&mut doc, body, outer);
+    let middle = create(&mut doc, outer_box, "");
+    create(
+        &mut doc,
+        middle,
+        "position: fixed; top: 40px; left: 30px; width: 50px; height: 50px",
+    );
+    doc.resolve(0.0);
+    (doc, outer_box)
+}
+
+fn painted(doc: &BaseDocument, node: NodeId) -> Option<Vec<NodeId>> {
+    doc.get_node(node)
+        .unwrap()
+        .paint_children
+        .borrow()
+        .as_ref()
+        .map(|painted| painted.to_vec())
+}
+
+/// A box that becomes positioned after a layout paints the fixed box inside
+/// it in tree order, as it does when it was positioned from the start, though
+/// the static box between them did not change.
+#[test]
+fn a_box_positioned_later_paints_the_fixed_box_inside_it() {
+    let (mut doc, outer) = nested("");
+    let attr = QualName::new(None, ns!(), LocalName::from("style"));
+    doc.mutate()
+        .set_attribute(outer, attr, "position: relative");
+    doc.resolve(0.0);
+    let (fresh, fresh_outer) = nested("position: relative");
+    assert_eq!(painted(&doc, outer), painted(&fresh, fresh_outer));
+    assert_eq!(painted(&doc, outer).map(|painted| painted.len()), Some(2));
+}
