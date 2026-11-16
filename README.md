@@ -455,6 +455,13 @@ Each patch below fixes something those calls reach, and each has a test in
     painted by before let go of it. A node whose layout parent changed since
     its lists were last built now builds its whole subtree's lists again.
     One test. New.
+71. **A table's rows and row groups have boxes to read.** The table lays
+    its cells out in a grid and gave its rows and row groups no box, so
+    `getBoundingClientRect` found them at the top left with no size. Once
+    the grid is laid out, a row now spans its row track from the first
+    column to the last, and a row group its rows (CSS 2.1 §17.5), against
+    the table. They are still not painted, and a table in a vertical
+    writing mode does not place them yet. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

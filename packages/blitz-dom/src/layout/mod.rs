@@ -545,6 +545,9 @@ impl LayoutPassState<'_> {
                         ctx: context,
                     };
                     let mut output = compute_grid_layout(&mut table_wrapper, node_id, inputs);
+                    if inputs.run_mode == RunMode::PerformLayout {
+                        table_wrapper.place_rows(dom_node_id(node_id));
+                    }
 
                     // Absolutely positioned children take no part in the table grid. Their
                     // static position is the top-left of the table's content box.

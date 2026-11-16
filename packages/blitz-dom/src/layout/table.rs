@@ -822,6 +822,76 @@ fn collect_table_cells(
 /// own: the table lays out its cells. It lets go of what a box it had before kept (a
 /// row outside a table is laid out as a block), and its pseudo-elements, which the
 /// table does not lay out, get no box.
+impl TableTreeWrapper<'_, '_> {
+    /// Gives the table's rows and row groups their boxes once its grid is laid out: a row
+    /// spans its row track from the first column to the last, and a row group the rows in
+    /// it (CSS 2.1 §17.5). They are not boxes the table lays out or paints, but reading one,
+    /// as `getBoundingClientRect` does, finds it where browsers have it, against the table.
+    pub(crate) fn place_rows(&mut self, table: NodeId) {
+        #[cfg(feature = "writing-mode")]
+        if self.doc.nodes[table]
+            .layout_data()
+            .writing_mode
+            .is_vertical()
+        {
+            return;
+        }
+        let mut placed: Vec<(NodeId, taffy::Rect<f32>)> = Vec::new();
+        {
+            let grid = self.ctx.computed_grid_info.borrow();
+            let Some(grid) = grid.as_ref() else {
+                return;
+            };
+            let columns = &grid.columns;
+            let (left, right) = match (columns.positions.first(), columns.positions.last()) {
+                (Some(first), Some(last)) => (first.start, last.end),
+                _ => {
+                    let line = columns.empty_axis_line.unwrap_or(0.0);
+                    (line, line)
+                }
+            };
+            let first_track = grid.rows.negative_implicit_tracks as usize;
+            for (index, row) in self.ctx.rows.iter().enumerate() {
+                let Some(track) = grid.rows.positions.get(first_track + index) else {
+                    continue;
+                };
+                let rect = taffy::Rect {
+                    left,
+                    right,
+                    top: track.start,
+                    bottom: track.end,
+                };
+                placed.push((row.node_id, rect));
+                let Some(group) = row.group else {
+                    continue;
+                };
+                match placed.iter_mut().find(|(id, _)| *id == group) {
+                    Some((_, around)) => around.bottom = rect.bottom,
+                    None => placed.push((group, rect)),
+                }
+            }
+        }
+        for (node_id, rect) in placed {
+            let node = &mut self.doc.nodes[node_id];
+            node.layout_parent.set(Some(table));
+            let layout = taffy::Layout {
+                location: taffy::Point {
+                    x: rect.left,
+                    y: rect.top,
+                },
+                size: taffy::Size {
+                    width: rect.right - rect.left,
+                    height: rect.bottom - rect.top,
+                },
+                ..taffy::Layout::new()
+            };
+            let data = node.layout_data_mut();
+            data.unrounded_layout = layout;
+            data.final_layout = layout;
+        }
+    }
+}
+
 fn let_go_of_box_in_table(doc: &mut BaseDocument, node_id: NodeId) {
     let_go_of_own_box(doc, node_id);
     let node = &doc.nodes[node_id];
