@@ -2036,14 +2036,56 @@ impl Node {
             let mut line_rect: Option<taffy::Rect<f32>> = None;
             let mut atomic: Option<(f32, f32)> = None;
 
+            // Collapsible spaces at the end of a line are removed (CSS Text 3's 4.1.2), so they
+            // are in no box on it. Parley hangs them past the line's end edge instead.
+            let hanging = line.metrics().hanging_advance;
+            let (mut line_start, mut line_end) = (f32::INFINITY, f32::NEG_INFINITY);
+            if hanging > 0.0 {
+                for item in line.items() {
+                    let (x0, x1) = match item {
+                        PositionedLayoutItem::GlyphRun(run) => {
+                            (run.offset(), run.offset() + run.advance())
+                        }
+                        PositionedLayoutItem::InlineBox(inline_box) => {
+                            (inline_box.x, inline_box.x + inline_box.width)
+                        }
+                    };
+                    line_start = line_start.min(x0);
+                    line_end = line_end.max(x1);
+                }
+            }
+            let (content_start, content_end) = match (hanging > 0.0, layout.is_rtl()) {
+                (false, _) => (f32::NEG_INFINITY, f32::INFINITY),
+                (true, false) => (f32::NEG_INFINITY, line_end - hanging),
+                (true, true) => (line_start + hanging, f32::INFINITY),
+            };
+
             for item in line.items() {
                 match item {
                     PositionedLayoutItem::GlyphRun(glyph_run) => {
-                        if !is_in_target(glyph_run.style().brush.id) {
+                        let id = glyph_run.style().brush.id;
+                        if !is_in_target(id) {
                             continue;
                         }
                         let x0 = glyph_run.offset();
                         let x1 = x0 + glyph_run.advance();
+                        let collapsible = !matches!(
+                            self.with(id)
+                                .primary_styles()
+                                .map(|style| style.clone_white_space_collapse()),
+                            Some(
+                                WhiteSpaceCollapse::Preserve
+                                    | WhiteSpaceCollapse::BreakSpaces
+                                    | WhiteSpaceCollapse::PreserveSpaces
+                            )
+                        );
+                        let (x0, x1) = match collapsible {
+                            true => (
+                                x0.clamp(content_start, content_end),
+                                x1.clamp(content_start, content_end),
+                            ),
+                            false => (x0, x1),
+                        };
                         // The inline box's content area: the ascent and descent of
                         // the span's first available font around the baseline, as
                         // CSS 2's 10.6.1 has it. `line-height` does not change it.

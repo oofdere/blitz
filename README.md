@@ -470,6 +470,12 @@ Each patch below fixes something those calls reach, and each has a test in
     root inline box's content area, which is its own when it has the root's
     font: Parley does not give the metrics of a span with no text. One test.
     New.
+73. **Collapsible spaces at the end of a line are in no inline box.** An
+    inline element whose line ended in a collapsible space was as wide as its
+    text and that space, which CSS Text 3 §4.1.2 removes. Its box now ends
+    where the line's hanging whitespace starts, as Parley measures it; spaces
+    under `white-space: pre`, `pre-wrap`, `break-spaces` and
+    `preserve-spaces` are kept. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
