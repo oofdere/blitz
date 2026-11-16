@@ -229,6 +229,12 @@ Each patch below fixes something those calls reach, and each has a test in
     box broke its lines at the measured width, and a layout taken from the
     cache did not break them again. A box already laid out now gets its lines
     back after a measurement. One test. New.
+41. **The pseudo-elements of an inline in an inline flow are made and counted.**
+    Those of an inline nested in another inline were never made, a container's
+    first construction read an inline child's before they were, and a block
+    `::before` of an inline did not break its line. They are now made before
+    the container's children are classified, and a block one breaks the line.
+    Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -238,7 +244,8 @@ from niso's copy harness, which reads a kept page and a fresh one (59 of 2,000
 seeds, and seeds 278, 978 and 1944). Patches 36 and 37 come from Lens's fuzzer
 (seeds 96, 612, 1221 and 1822, and 1137 and 1658), patch 38 from the frames
 fuzzer's mode that changes a style sheet (seed 1210), and patches 39 and 40 from
-its viewport mode (14 seeds, and seed 59).
+its viewport mode (14 seeds, and seed 59). Patch 41 comes from the same mode
+as patch 38 (seed 1223).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
@@ -246,7 +253,8 @@ in 2,000 debug and 2,000 release seeds (with an 800×600 viewport and with none)
 and 300 seeds of its wide mode.
 
 Lens's fuzzer has no stale seed in 2,000 release seeds, with floats and without,
-and the frames fuzzer's viewport mode none in 300.
+and the frames fuzzer none in 200 seeds, nor in 300 of its viewport mode or of its
+mode that changes a style sheet.
 
 ### Left out on purpose
 
