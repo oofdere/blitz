@@ -318,6 +318,13 @@ Each patch below fixes something those calls reach, and each has a test in
 53. **`elementFromPoint` takes viewport coordinates.** It handed the point to
     `hit`, which takes page coordinates, so once the page scrolled it found
     what had been under the point before. Two tests. New.
+54. **Only the first `body` gives the principal writing mode.** Patch 48 took
+    the first `body` child that is displayed, as the editor's draft of CSS
+    Writing Modes 4 (section 8) says, a later one too. Blink and Gecko both
+    look at the first `body` child only; Blink, as the draft, skips it when
+    its `display` is `none`, and Gecko does not. This follows Blink: the
+    first `body`, unless it is not displayed. One test changed, one case
+    added.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

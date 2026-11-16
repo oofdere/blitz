@@ -1238,8 +1238,10 @@ impl Node {
     /// For the document node: the document's principal writing mode (CSS Writing Modes 4,
     /// section 8), which the root element's box and the initial containing block use. It is
     /// the root element's `writing-mode` and `direction`, or, when the root element is an
-    /// `html` element, those of its first `body` child whose `display` is not `none`.
-    /// Containment on either turns that off (CSS Containment 2, section 3).
+    /// `html` element, those of its first `body` child, unless its `display` is `none`.
+    /// Containment on either turns that off (CSS Containment 2, section 3). The editor's draft
+    /// takes the first `body` child that is displayed, a later one too, but Blink and Gecko
+    /// both look at the first only, and Blink, as the draft, not at one that isn't displayed.
     pub(crate) fn principal_writing_mode(&self) -> stylo_taffy::WritingMode {
         let Some(root) = self
             .children
@@ -1255,13 +1257,12 @@ impl Node {
             .iter()
             .map(|&id| self.with(id))
             .filter(|_| html)
-            .find(|child| {
-                child.data.is_element_with_tag_name(&local_name!("body"))
-                    && child
-                        .primary_styles()
-                        .is_some_and(|style| !style.clone_display().is_none())
+            .find(|child| child.data.is_element_with_tag_name(&local_name!("body")))
+            .filter(|body| {
+                body.primary_styles()
+                    .is_some_and(|style| !style.clone_display().is_none())
+                    && !body.has_containment()
             })
-            .filter(|body| !body.has_containment())
             .unwrap_or(root)
             .writing_mode()
     }

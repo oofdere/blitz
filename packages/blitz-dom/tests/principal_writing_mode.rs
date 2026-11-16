@@ -1,7 +1,7 @@
 //! The document's principal writing mode (CSS Writing Modes 4, section 8): the root
 //! element's box and the initial containing block use the `writing-mode` and
-//! `direction` of the body, when the root element is an `html` element with a `body`
-//! child that is displayed, and the viewport scrolls from the origin it gives.
+//! `direction` of the body, when the root element is an `html` element whose first
+//! `body` child is displayed, and the viewport scrolls from the origin it gives.
 //! Containment on either turns that off (CSS Containment 2, section 3).
 
 use blitz_dom::{
@@ -81,10 +81,10 @@ fn the_viewport_scrolls_from_the_bodys_start() {
     assert_eq!((area.x0, area.x1), (-1200.0, 800.0));
 }
 
-/// A body that is not displayed gives nothing, and the first that is gives it. A root
-/// element that is not an `html` element takes nothing from a `body` child.
+/// Only the first body gives it, and not when it is not displayed. A root element that is
+/// not an `html` element takes nothing from a `body` child.
 #[test]
-fn only_a_displayed_body_of_an_html_element_gives_it() {
+fn only_the_first_body_of_an_html_element_gives_it_when_displayed() {
     let (doc, html, _) = page("html", "width: 300px", &["direction: rtl; display: none"]);
     assert_eq!(x(&doc, html), 0.0, "not displayed");
     let (doc, html, _) = page(
@@ -92,7 +92,9 @@ fn only_a_displayed_body_of_an_html_element_gives_it() {
         "width: 300px",
         &["direction: ltr; display: none", "direction: rtl"],
     );
-    assert_eq!(x(&doc, html), 500.0, "the first that is displayed");
+    assert_eq!(x(&doc, html), 0.0, "a later body, after one not displayed");
+    let (doc, html, _) = page("html", "width: 300px", &["direction: rtl", "direction: ltr"]);
+    assert_eq!(x(&doc, html), 500.0, "the first, before another");
     let (doc, root, _) = page("div", "width: 300px", &["direction: rtl"]);
     assert_eq!(x(&doc, root), 0.0, "not an html element");
 }
