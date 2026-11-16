@@ -280,6 +280,15 @@ Each patch below fixes something those calls reach, and each has a test in
     floated scroll container in a `span` read none on a page built fresh, and
     the overflow of an older layout on a page edited after one. Two tests,
     with the `floats` feature. New.
+48. **The root element's box and the initial containing block use the
+    principal writing mode.** CSS Writing Modes 4 (section 8) takes the used
+    `writing-mode` and `direction` of an `html` root element from its first
+    displayed `body` child, unless either has containment, and propagates them
+    to the initial containing block and the viewport. Only the `writing-mode`
+    feature did, for the root element's layout, and without the `display` and
+    `html` checks. The root element's box and the initial containing block now
+    take the body's direction, and the viewport scrolls from the origin it
+    gives, with or without the feature. Six tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -293,7 +302,8 @@ its viewport mode (14 seeds, and seed 59). Patch 41 comes from the same mode
 as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
 scroll offsets (`read77`), patch 45 from propagating the body's overflow as
 CSS Overflow 3 says, patch 46 from Lens's two gaps in patch 45, and patch 47
-from niso's frames fuzzer (seed 2121).
+from niso's frames fuzzer (seed 2121). Patch 48 is the first of niso's list for
+later.
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
