@@ -104,3 +104,28 @@ fn restyling_the_root_element_moves_the_bodys_overflow() {
     doc.resolve(0.0);
     assert_eq!(scrolled(&mut doc, body), (1400.0, 0.0));
 }
+
+/// The root element's own `overflow` goes to the viewport, and its box uses `visible`.
+#[test]
+fn the_root_element_gives_its_overflow_to_the_viewport() {
+    let (doc, html, _) = page("overflow: hidden", "margin: 0");
+    assert_eq!(
+        doc.viewport_overflow(),
+        (Overflow::Hidden, Overflow::Hidden)
+    );
+    let node = doc.get_node(html).unwrap();
+    assert!(node.gives_overflow_to_viewport());
+    assert_eq!(
+        node.used_overflow(),
+        Some((Overflow::Visible, Overflow::Visible))
+    );
+}
+
+/// `clip` on the viewport is `hidden`: the user cannot scroll the page, and code can.
+#[test]
+fn clip_on_the_viewport_is_hidden() {
+    let (mut doc, html, body) = page("overflow: clip", "margin: 0");
+    assert_eq!(scrolled(&mut doc, body), (0.0, 0.0));
+    doc.scroll_to(html, 0.0, 500.0, ScrollBehavior::Instant);
+    assert_eq!(doc.viewport_scroll().y, 500.0);
+}

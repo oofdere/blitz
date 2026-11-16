@@ -1779,16 +1779,21 @@ impl Node {
         })
     }
 
-    /// Whether this is the body whose `overflow` the viewport takes (CSS Overflow 3,
-    /// section 3.3): the first `body` child of an `html` root element whose own
-    /// `overflow` is `visible` on both axes. Its box then uses `visible`.
+    /// Whether this is the element whose `overflow` the viewport takes (CSS Overflow 3,
+    /// section 3.3): the root element, or, when that is an `html` element whose own
+    /// `overflow` is `visible` on both axes, its first `body` child. Its box then uses
+    /// `visible`.
     pub fn gives_overflow_to_viewport(&self) -> bool {
+        let Some(parent) = self.parent.map(|id| self.with(id)) else {
+            return false;
+        };
+        if self.is_element() && matches!(parent.data, NodeData::Document(_)) {
+            return true;
+        }
         if !self.data.is_element_with_tag_name(&local_name!("body")) {
             return false;
         }
-        let Some(html) = self.parent.map(|id| self.with(id)) else {
-            return false;
-        };
+        let html = parent;
         html.data.is_element_with_tag_name(&local_name!("html"))
             && html
                 .parent
@@ -1805,7 +1810,7 @@ impl Node {
     }
 
     /// The `overflow` this node's box uses on each axis: its own, or `visible` for the
-    /// body that gives its own to the viewport. `None` for a node with no styles.
+    /// element that gives its own to the viewport. `None` for a node with no styles.
     pub fn used_overflow(&self) -> Option<(Overflow, Overflow)> {
         let style = self.primary_styles()?;
         Some(match self.gives_overflow_to_viewport() {

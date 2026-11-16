@@ -517,12 +517,11 @@ impl BaseDocument {
                 let scale = self.viewport.scale() as f64;
                 let window_width = self.viewport.window_size.0 as f64 / scale;
                 let window_height = self.viewport.window_size.1 as f64 / scale;
-                // The viewport scrolls what its `overflow` lets it, as a scroll container does,
-                // and `visible` is `auto` there.
+                // The viewport scrolls what its `overflow` lets it, as a scroll container does:
+                // `visible` is `auto` there, and `clip` is `hidden` (CSS Overflow 3, section 3.3).
                 let scrollable = |overflow| match overflow {
                     Overflow::Visible | Overflow::Scroll | Overflow::Auto => true,
-                    Overflow::Hidden => include_hidden,
-                    Overflow::Clip => false,
+                    Overflow::Hidden | Overflow::Clip => include_hidden,
                 };
                 let (overflow_x, overflow_y) = self.viewport_overflow();
                 let (can_x_scroll, can_y_scroll) = (scrollable(overflow_x), scrollable(overflow_y));
