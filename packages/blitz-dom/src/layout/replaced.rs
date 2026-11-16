@@ -1,19 +1,24 @@
-use markup5ever::{LocalName, local_name};
+use markup5ever::local_name;
+
+use crate::node::{ElementData, SpecialElementData};
 use taffy::{
     AvailableSpace, BoxSizing, CoreStyle, LayoutInput, LayoutOutput, MaybeMath, MaybeResolve,
     RequestedAxis, ResolveOrZero as _, RunMode, Size, SizingMode,
 };
 
 /// Whether an element is a replaced element laid out as a leaf box with an
-/// intrinsic size. Note: `<object>` is deliberately excluded as its fallback
-/// children should render when no resource is loaded.
-pub(crate) fn is_replaced_element(tag_name: &LocalName) -> bool {
+/// intrinsic size. An `<object>` is one only once an image has loaded for it:
+/// until then, and if none does, its fallback children render instead.
+pub(crate) fn is_replaced_element(element: &ElementData) -> bool {
+    let tag_name = &element.name.local;
     *tag_name == local_name!("img")
         || *tag_name == local_name!("svg")
         || *tag_name == local_name!("canvas")
         || *tag_name == local_name!("video")
         || *tag_name == local_name!("embed")
         || *tag_name == local_name!("iframe")
+        || (*tag_name == local_name!("object")
+            && matches!(element.special_data, SpecialElementData::Image(_)))
 }
 
 /// The intrinsic dimensions of a replaced element per CSS Images 3
@@ -451,8 +456,9 @@ pub fn compute_replaced_layout(
 
 /// Inline-level elements that are laid out as atomic inline boxes (with their own
 /// layout box) rather than being flattened into the surrounding text layout.
-pub(crate) fn is_inline_box_element(tag_name: &LocalName) -> bool {
-    is_replaced_element(tag_name)
+pub(crate) fn is_inline_box_element(element: &ElementData) -> bool {
+    let tag_name = &element.name.local;
+    is_replaced_element(element)
         || *tag_name == local_name!("input")
         || *tag_name == local_name!("textarea")
         || *tag_name == local_name!("button")

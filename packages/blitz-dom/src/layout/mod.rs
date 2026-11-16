@@ -383,7 +383,7 @@ impl LayoutPassState<'_> {
                     }
                 }
 
-                if is_replaced_element(&element_data.name.local) {
+                if is_replaced_element(element_data) {
                     // Width/height attributes are presentational hints mapped to the CSS
                     // width/height properties by
                     // `synthesize_presentational_hints_for_legacy_attributes`, so they

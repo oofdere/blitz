@@ -442,7 +442,9 @@ impl DocumentMutator<'_> {
 
         if (tag, attr) == tag_and_attr!("input", "checked") {
             set_input_checked_state(element, value.to_string());
-        } else if (tag, attr) == tag_and_attr!("img", "src") {
+        } else if (tag, attr) == tag_and_attr!("img", "src")
+            || (tag, attr) == tag_and_attr!("object", "data")
+        {
             self.load_image(node_id);
         } else if (tag, attr) == tag_and_attr!("canvas", "src") {
             self.load_custom_paint_src(node_id);
@@ -1251,6 +1253,9 @@ impl<'doc> DocumentMutator<'doc> {
                     .eager_op_queue
                     .push(SpecialOp::LoadCustomPaintSource(node_id)),
                 "button" | "fieldset" | "input" | "select" | "textarea" | "object" | "output" => {
+                    if tag == "object" {
+                        self.eager_op_queue.push(SpecialOp::LoadImage(node_id));
+                    }
                     self.eager_op_queue
                         .push(SpecialOp::ProcessButtonInput(node_id));
                     self.form_nodes.insert(node_id);
@@ -1456,9 +1461,16 @@ impl<'doc> DocumentMutator<'doc> {
         self.doc.stylesheet_generation += 1;
     }
 
+    /// Loads the image of an `<img>`, from its `src`, or of an `<object>`, from its `data`,
+    /// which makes the object a replaced element once the image has come.
     fn load_image(&mut self, target_id: NodeId) {
         let node = &self.doc.nodes[target_id];
-        if let Some(raw_src) = node.attr(local_name!("src")) {
+        let source = if node.data.is_element_with_tag_name(&local_name!("object")) {
+            local_name!("data")
+        } else {
+            local_name!("src")
+        };
+        if let Some(raw_src) = node.attr(source) {
             if !raw_src.is_empty()
                 && let Some(src) = self.doc.resolve_url(raw_src)
             {

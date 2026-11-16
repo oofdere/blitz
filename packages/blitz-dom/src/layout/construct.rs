@@ -489,7 +489,7 @@ fn collect_layout_children_with_wrap(
         // A replaced element is laid out as a leaf, whatever its `display`, and its
         // children are not rendered. Building them a table (or any other box) would
         // overwrite the element's own data with the table's.
-        if crate::layout::replaced::is_replaced_element(&el.name.local) {
+        if crate::layout::replaced::is_replaced_element(el) {
             doc.iter_subtree_mut(container_node_id, |id: NodeId, doc: &mut BaseDocument| {
                 doc.nodes[id].remove_damage(CONSTRUCT_BOX | CONSTRUCT_DESCENDENT | CONSTRUCT_FC);
             });
@@ -1151,7 +1151,7 @@ pub(crate) fn find_inline_layout_embedded_boxes(
                     (DisplayOutside::Inline, DisplayInside::Flow) => {
                         let tag_name = &element_data.name.local;
 
-                        if is_inline_box_element(tag_name) {
+                        if is_inline_box_element(element_data) {
                             layout_children.push(node_id);
                         } else if *tag_name == local_name!("br") {
                             node.remove_damage(CONSTRUCT_DESCENDENT | CONSTRUCT_FC | CONSTRUCT_BOX);

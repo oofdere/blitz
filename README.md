@@ -386,6 +386,14 @@ Each patch below fixes something those calls reach, and each has a test in
     element. The image handler now keeps the URL it was asked for, and the
     answer is matched by that. One test, under the `svg` feature, which
     is how blitz decodes an image with no image format features on. New.
+62. **An `<object>` whose data is an image is a replaced element.** blitz
+    never loaded an object's `data`, so an object always showed its
+    fallback children. Its data is now loaded as an image is, and once an
+    image has come the object is a replaced element with that image's
+    intrinsic size, whose width, height, padding and border apply and whose
+    children are not rendered. Until then, and if what came is no image, it
+    stays an ordinary element showing its fallback, as Acid2's eyes need.
+    Four tests, three under the `svg` feature. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

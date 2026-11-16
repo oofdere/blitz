@@ -1203,7 +1203,7 @@ impl Node {
 
         let mut flags = stylo_taffy::StyleFlags::empty();
         if let Some(el) = self.data.downcast_element() {
-            if crate::layout::replaced::is_replaced_element(&el.name.local) {
+            if crate::layout::replaced::is_replaced_element(el) {
                 flags |= stylo_taffy::StyleFlags::IS_REPLACED;
             }
             if el.name.local == local_name!("button") {
@@ -1803,7 +1803,7 @@ impl Node {
             return false;
         };
         if self.flags.is_inline_root()
-            || crate::layout::replaced::is_inline_box_element(&element.name.local)
+            || crate::layout::replaced::is_inline_box_element(element)
         {
             return false;
         }
