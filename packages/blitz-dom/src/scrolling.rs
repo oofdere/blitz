@@ -386,8 +386,8 @@ impl BaseDocument {
 
     /// The area the viewport scrolls over, in CSS pixels from the origin of the initial
     /// containing block: the document's scrollable overflow (the root element's margin box
-    /// and the scrollable overflow of what it holds, the boxes the initial containing block
-    /// holds included), at least the viewport, and only as far as it reaches from the
+    /// and the scrollable overflow of what it holds, the absolute boxes the initial
+    /// containing block holds included and the fixed ones left out), at least the viewport, and only as far as it reaches from the
     /// viewport's scroll origin. That origin is on the right when the root element's
     /// writing mode starts its lines or its blocks there, and at the bottom when it starts
     /// its lines there, and what is past the origin cannot be scrolled to.
@@ -412,7 +412,7 @@ impl BaseDocument {
             to_icb *= *transform;
         }
         let overflow = (kurbo::Affine::scale(1.0 / scale) * to_icb)
-            .transform_rect_bbox(*root.scrollable_overflow());
+            .transform_rect_bbox(self.root_scrolled_overflow);
         let area = viewport.union(margin_box).union(overflow);
         let (reverse_x, reverse_y) = root.primary_styles().map_or((false, false), |style| {
             let wm = style.writing_mode;

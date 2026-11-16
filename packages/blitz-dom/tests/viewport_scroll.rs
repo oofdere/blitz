@@ -94,3 +94,18 @@ fn a_right_to_left_page_scrolls_to_the_left() {
     );
     assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
 }
+
+/// A fixed box does not scroll with the page, so it adds nothing to what the page scrolls
+/// over.
+#[test]
+fn a_fixed_box_does_not_count() {
+    let mut doc = page(
+        "",
+        "position: fixed; top: 2000px; width: 10px; height: 10px",
+    );
+    assert_eq!(
+        doc.viewport_scroll_area(),
+        kurbo::Rect::new(0.0, 0.0, 800.0, 600.0)
+    );
+    assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
+}

@@ -214,6 +214,10 @@ impl BaseDocument {
                 overflow = overflow.union(child_rect_in_self);
             }
         }
+        let is_root = self
+            .try_root_element()
+            .is_some_and(|root| root.id == node_id);
+        let mut scrolled = overflow;
         let hoisted_children =
             std::mem::take(&mut *self.nodes[node_id].hoisted_children.borrow_mut());
         for &child_id in &hoisted_children {
@@ -222,6 +226,9 @@ impl BaseDocument {
             }
             let child_rect_in_self = self.resolve_transforms(child_id, resolve_all);
             overflow = overflow.union(child_rect_in_self);
+            if self.nodes[child_id].taffy_position() != taffy::Position::Fixed {
+                scrolled = scrolled.union(child_rect_in_self);
+            }
         }
         *self.nodes[node_id].hoisted_children.borrow_mut() = hoisted_children;
         for pseudo in [self.nodes[node_id].before(), self.nodes[node_id].after()] {
@@ -231,8 +238,12 @@ impl BaseDocument {
             }
             let child_rect_in_self = self.resolve_transforms(pseudo, resolve_all);
             overflow = overflow.union(child_rect_in_self);
+            scrolled = scrolled.union(child_rect_in_self);
         }
 
+        if is_root {
+            self.root_scrolled_overflow = scrolled;
+        }
         *self.nodes[node_id].scrollable_overflow_mut() = overflow;
         *self.nodes[node_id].layout_children.get_mut() = layout_children;
 

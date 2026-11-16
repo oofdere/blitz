@@ -295,6 +295,9 @@ pub struct BaseDocument {
     pub(crate) has_canvas: bool,
     /// Whether there are subdocuments that are animating (so we should re-render every frame)
     pub(crate) subdoc_is_animating: bool,
+    /// The root element's scrollable overflow less the fixed boxes it holds, which do not
+    /// scroll with the page: in device pixels, in the root element's border box.
+    pub(crate) root_scrolled_overflow: kurbo::Rect,
 
     /// Map of id attribute values to node IDs for fast lookups.
     /// May contain multiple nodes for the same id: `get_element_by_id`
@@ -497,6 +500,7 @@ impl BaseDocument {
             mousedown_node_id: None,
             has_active_animations: false,
             subdoc_is_animating: false,
+            root_scrolled_overflow: kurbo::Rect::ZERO,
             has_canvas: false,
             sub_document_nodes: HashSet::new(),
             iframe_loads: HashMap::new(),
