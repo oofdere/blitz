@@ -731,6 +731,23 @@ fn collect_table_cells(
                 }
             }
 
+            // A cell is as tall as its row, and its `height` is only a minimum
+            // for the row (CSS 2.1 section 17.5.3), so it stretches to the row.
+            let height = style.size.height;
+            let minimum = match height.tag() {
+                taffy::CompactLength::LENGTH_TAG => {
+                    Some(taffy::LengthPercentageAuto::length(height.value()))
+                }
+                taffy::CompactLength::PERCENT_TAG => {
+                    Some(taffy::LengthPercentageAuto::percent(height.value()))
+                }
+                _ => None,
+            };
+            if let Some(minimum) = minimum {
+                style.min_size.height = minimum;
+                style.size.height = style_helpers::auto();
+            }
+
             style.size.width = style_helpers::auto();
             cells.push(TableCell {
                 node_id,

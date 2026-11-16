@@ -424,6 +424,12 @@ Each patch below fixes something those calls reach, and each has a test in
     `lifted_paint_offset` gives the offset for a painter that does not
     contain the box, and hit testing now uses it for an out-of-flow box too.
     Four tests, one of them with the page scrolled. New.
+66. **A table cell is as tall as its row.** A cell with a `height` was
+    laid out that tall, so a shorter cell did not reach down its row. Its
+    `height`, as a length or a percentage, is now a minimum height, which
+    still sets the least height of the row (CSS 2.1 section 17.5.3), and
+    the cell stretches to the row like one with no `height`. Three tests.
+    New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
