@@ -93,7 +93,11 @@ fn only_the_first_body_of_an_html_element_gives_it_when_displayed() {
         &["direction: ltr; display: none", "direction: rtl"],
     );
     assert_eq!(x(&doc, html), 0.0, "a later body, after one not displayed");
-    let (doc, html, _) = page("html", "width: 300px", &["direction: rtl", "direction: ltr"]);
+    let (doc, html, _) = page(
+        "html",
+        "width: 300px",
+        &["direction: rtl", "direction: ltr"],
+    );
     assert_eq!(x(&doc, html), 500.0, "the first, before another");
     let (doc, root, _) = page("div", "width: 300px", &["direction: rtl"]);
     assert_eq!(x(&doc, root), 0.0, "not an html element");
