@@ -339,6 +339,14 @@ Each patch below fixes something those calls reach, and each has a test in
     its parent when the root turned vertical kept its old size. The cache now
     records the placer's writing mode and is not used in another. Found by
     the same harness (seed 2056). One test. New.
+57. **Below `display: contents`, a box follows its layout parent's writing
+    mode.** Stylo makes an inline box whose writing mode differs from its
+    layout parent's an inline-block. Below a `display: contents` element that
+    parent is further up, and Stylo stopped cascading at the `display:
+    contents` element when its own style came out unchanged, so the box kept
+    the display it had under the parent's old writing mode. A `display:
+    contents` element that is cascaded again now has its children cascaded
+    again too. Found by the same harness (seed 2473). One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

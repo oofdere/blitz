@@ -272,6 +272,29 @@ impl<'dom> DomTraversal<BlitzNode<'dom>> for RecalcStyle<'_> {
         if let Some(el) = node.as_element() {
             // let mut data = el.mutate_data().unwrap();
             let mut data = unsafe { el.ensure_data() };
+
+            // An inline box whose writing mode differs from its layout parent's is made an
+            // inline-block when it is styled. Below a `display: contents` element that parent is
+            // further up, and Stylo cascades no further than this element when its own style comes
+            // out unchanged, so its children are cascaded again whenever it is.
+            #[cfg(feature = "writing-mode")]
+            if !data.hint.is_empty()
+                && data
+                    .styles
+                    .get_primary()
+                    .is_some_and(|style| style.is_display_contents())
+            {
+                for child in el.as_node().traversal_children() {
+                    let Some(child) = child.as_element() else {
+                        continue;
+                    };
+                    if let Some(mut child_data) = child.mutate_data() {
+                        child_data.hint.insert(RestyleHint::RECASCADE_SELF);
+                    }
+                }
+                el.0.set_dirty_descendants();
+            }
+
             recalc_style_at(self, context, el, &mut data, note_child);
 
             sync_pseudo_element_styles(el.0, &data, &self.nodes_needing_style_image_flush);
