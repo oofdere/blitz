@@ -308,6 +308,16 @@ Each patch below fixes something those calls reach, and each has a test in
     in one place. Hit testing and the paint position of a hoisted fixed box
     never recognised the root element at all, so in hits a fixed box an
     untransformed root holds moved with the page too. Five tests. New.
+52. **getBoundingClientRect reads vertical writing modes physically.** With
+    the `writing-mode` feature, a box's unrounded layout is in the writing
+    mode of the box that places it, and the read used it as it was, so a box
+    placed by a vertical one came back with its width and height swapped and,
+    under a `*-rl` mode, not mirrored. Each box now goes through the
+    conversion `physical_unrounded_geometry` uses. Three tests, with the
+    feature. New.
+53. **`elementFromPoint` takes viewport coordinates.** It handed the point to
+    `hit`, which takes page coordinates, so once the page scrolled it found
+    what had been under the point before. Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
