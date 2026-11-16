@@ -438,6 +438,25 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
                 || old_text.text_rendering != new_text.text_rendering)
     };
 
+    // An inline element's inline margin, border and padding are held open in its line by
+    // spacers built with the inline layout, only at the edges that have any, so a change to
+    // them builds the line again.
+    let inline_edges_change = || {
+        let display = new.get_box().display;
+        if display.outside() != DisplayOutside::Inline || display.inside() != DisplayInside::Flow {
+            return false;
+        }
+        let (old_margin, new_margin) = (old.get_margin(), new.get_margin());
+        let (old_padding, new_padding) = (old.get_padding(), new.get_padding());
+        let (old_border, new_border) = (old.get_border(), new.get_border());
+        old_margin.margin_left != new_margin.margin_left
+            || old_margin.margin_right != new_margin.margin_right
+            || old_padding.padding_left != new_padding.padding_left
+            || old_padding.padding_right != new_padding.padding_right
+            || old_border.border_left_width != new_border.border_left_width
+            || old_border.border_right_width != new_border.border_right_width
+    };
+
     // Table layout bakes the sizes of the table and its internal boxes into the table
     // context when the table is constructed, in the table's writing mode.
     let table_needs_rebuild = || {
@@ -466,6 +485,8 @@ pub(crate) fn compute_layout_damage(old: &ComputedValues, new: &ComputedValues) 
     } else if text_shaping_needs_recollect() {
         ALL_DAMAGE
     } else if table_needs_rebuild() {
+        ALL_DAMAGE
+    } else if inline_edges_change() {
         ALL_DAMAGE
     } else if old.get_position().order != new.get_position().order
         // `position` is unchanged here (else the box tree would be rebuilt), so

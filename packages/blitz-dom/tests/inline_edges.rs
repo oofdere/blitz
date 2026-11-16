@@ -74,6 +74,30 @@ fn line_of(block: &str, style: &str, words: [&str; 3]) -> [Rect; 3] {
     [rect(&doc, span), rect(&doc, inner), rect(&doc, after)]
 }
 
+/// The rectangles of `line` with the span styled `from` and laid out, then styled `to` and laid
+/// out again.
+fn restyled(from: &str, to: &str) -> [Rect; 3] {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, "html");
+    doc.mutate().append_children(root, &[html]);
+    let body = element(&mut doc, html, "body", "margin: 0", "");
+    let div = element(&mut doc, body, "div", "", "");
+    text(&mut doc, div, "aaa");
+    let span = element(&mut doc, div, "span", from, "");
+    let inner = element(&mut doc, span, "span", "", "bbb");
+    let after = element(&mut doc, div, "span", "", "ccc");
+    doc.resolve(0.0);
+    let style = QualName::new(None, ns!(), LocalName::from("style"));
+    doc.mutate().set_attribute(span, style, to);
+    doc.resolve(0.0);
+    [rect(&doc, span), rect(&doc, inner), rect(&doc, after)]
+}
+
 /// How far each of the three rectangles of `line` moves, and how much wider the span is, with
 /// `style` than without it.
 fn moved(block: &str, style: &str) -> ([f64; 3], f64) {
@@ -232,4 +256,15 @@ fn the_selected_text_is_only_the_words() {
         .len();
     doc.set_text_selection(div, 0, div, length);
     assert_eq!(doc.get_selected_text().as_deref(), Some("aaabbbccc"));
+}
+
+/// An element whose edges change after it was laid out takes the width it would have had with
+/// them from the start, and gives it back when they go.
+#[test]
+fn edges_set_or_taken_away_later_take_their_width() {
+    let edges = "margin: 0 3px; border: 2px solid; padding: 0 7px";
+    assert_eq!(restyled("", edges), line("", edges));
+    assert_eq!(restyled(edges, ""), line("", ""));
+    let wider = "margin: 0 5px; border: 2px solid; padding: 0 9px";
+    assert_eq!(restyled(edges, wider), line("", wider));
 }

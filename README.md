@@ -430,6 +430,11 @@ Each patch below fixes something those calls reach, and each has a test in
     still sets the least height of the row (CSS 2.1 section 17.5.3), and
     the cell stretches to the row like one with no `height`. Three tests.
     New.
+67. **An inline element's edges that change are laid out again.** Patch
+    58's spacers are built with the line, only at the edges that have a
+    margin, border or padding, so an element that gained or lost one kept
+    the line it had. A change to an inline element's inline margin, border
+    width or padding now builds the line again. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -444,7 +449,9 @@ as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
 scroll offsets (`read77`), patch 45 from propagating the body's overflow as
 CSS Overflow 3 says, patch 46 from Lens's two gaps in patch 45, and patch 47
 from niso's frames fuzzer (seed 2121). Patch 48 is the first of niso's list for
-later, and patches 49 and 50 came up while it was made.
+later, and patches 49 and 50 came up while it was made. Patch 67 comes
+from niso's frames harnesses (`81f` and `81v`), where patch 58 left
+incremental frames that a fresh layout does not give (seed 172).
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
