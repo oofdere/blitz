@@ -235,6 +235,36 @@ Each patch below fixes something those calls reach, and each has a test in
     `::before` of an inline did not break its line. They are now made before
     the container's children are classified, and a block one breaks the line.
     Two tests. New.
+42. **A box's own scroll offset and the viewport's do not move a fixed box in
+    reads.** `getBoundingClientRect` took a box's own scroll offset off the
+    box, after its transform, and the viewport's scroll off a fixed box the
+    root element holds. A containing block's scroll now moves what it holds,
+    inside its transform, and a box's own offset moves only its inline
+    fragments. Five tests. New.
+43. **The viewport scrolls over the document's scrollable overflow.** It
+    scrolled over the root element's box and its in-flow overflow, from the
+    top left. It now takes the root element's margin box and the overflow of
+    what the root element holds, absolute boxes of the initial containing
+    block included, from the origin the root element's writing mode gives,
+    so a right-to-left page scrolls to the left. `viewport_scroll_area`
+    gives that area, for the scroll clamp and the scroll events. Four tests.
+    New.
+44. **A fixed box adds nothing to what the viewport scrolls over.** The root
+    element's scrollable overflow holds the fixed boxes hoisted into it, and
+    `resolve` now keeps that overflow without them for the viewport. One
+    test. New.
+45. **The body gives its overflow to the viewport.** When the root element's
+    overflow is `visible` on both axes, the viewport takes the body's (CSS
+    Overflow 3, section 3.3), and the body's box uses `visible`: it is no
+    scroll container, does not clip, and is laid out, scrolled, painted and
+    hit as visible. `Node::used_overflow` gives what a box uses and
+    `BaseDocument::viewport_overflow` what the viewport takes, which also
+    decides on which axes the user can scroll the page. Four tests. New.
+46. **The root element's box uses `visible`, and `clip` on the viewport is
+    `hidden`.** The root element's overflow always goes to the viewport, so
+    its own box uses `visible`, as the body's does once it gives its
+    overflow. `clip` on the viewport is read as `hidden` (the same
+    section): code can scroll the page and the user cannot. Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -245,7 +275,9 @@ seeds, and seeds 278, 978 and 1944). Patches 36 and 37 come from Lens's fuzzer
 (seeds 96, 612, 1221 and 1822, and 1137 and 1658), patch 38 from the frames
 fuzzer's mode that changes a style sheet (seed 1210), and patches 39 and 40 from
 its viewport mode (14 seeds, and seed 59). Patch 41 comes from the same mode
-as patch 38 (seed 1223).
+as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
+scroll offsets (`read77`), patch 45 from propagating the body's overflow as
+CSS Overflow 3 says, and patch 46 from Lens's two gaps in patch 45.
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
