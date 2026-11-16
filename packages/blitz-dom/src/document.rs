@@ -349,6 +349,9 @@ pub struct BaseDocument {
     // Tracks in-flight "critical" resources (e.g. stylesheets linked from the `<head>`),
     // keyed by request id
     pub(crate) pending_critical_resources: HashSet<usize>,
+    /// The request each `<link>` waits on for its style sheet, by the link's node. An answer to
+    /// any other request, or to a link no longer here, is passed over.
+    pub(crate) stylesheet_requests: HashMap<NodeId, usize>,
 
     // Service providers
     /// Network provider. Can be used to fetch assets.
@@ -517,6 +520,7 @@ impl BaseDocument {
             pending_images: HashMap::new(),
             pending_style_image_nodes: Vec::new(),
             pending_critical_resources: HashSet::new(),
+            stylesheet_requests: HashMap::new(),
             controls_to_form: HashMap::new(),
             net_provider,
             navigation_provider,
@@ -1265,6 +1269,7 @@ impl BaseDocument {
     }
 
     pub fn reload_resource_by_href(&mut self, href_to_reload: &str) {
+        let mut asked = Vec::new();
         for &node_id in self.nodes_to_stylesheet.keys() {
             let node = &self.nodes[node_id];
             let Some(element) = node.element_data() else {
@@ -1277,26 +1282,27 @@ impl BaseDocument {
                     if href == href_to_reload
                         && let Some(resolved_href) = self.resolve_url(href)
                     {
-                        self.net_provider.fetch(
-                            self.id(),
-                            self.build_request(resolved_href.clone()),
-                            ResourceHandler::boxed(
-                                self.tx.clone(),
-                                self.id,
-                                Some(node_id),
-                                self.shell_provider.clone(),
-                                StylesheetHandler {
-                                    source_url: resolved_href,
-                                    guard: self.guard.clone(),
-                                    net_provider: self.net_provider.clone(),
-                                    abort_signal: self.abort_signal.clone(),
-                                },
-                            ),
+                        let request = self.build_request(resolved_href.clone());
+                        let handler = ResourceHandler::new(
+                            self.tx.clone(),
+                            self.id,
+                            Some(node_id),
+                            self.shell_provider.clone(),
+                            StylesheetHandler {
+                                source_url: resolved_href,
+                                guard: self.guard.clone(),
+                                net_provider: self.net_provider.clone(),
+                                abort_signal: self.abort_signal.clone(),
+                            },
                         );
+                        asked.push((node_id, handler.request_id()));
+                        self.net_provider
+                            .fetch(self.id(), request, Box::new(handler));
                     }
                 }
             }
         }
+        self.stylesheet_requests.extend(asked);
     }
 
     /// Parse a `<style>` element's sheet from its child text content: the data of its
@@ -1451,6 +1457,11 @@ impl BaseDocument {
         let resource = match res.result {
             Ok(resource) => resource,
             Err(err) => {
+                if let Some(node_id) = res.node_id
+                    && self.stylesheet_requests.get(&node_id) == Some(&res.request_id)
+                {
+                    self.stylesheet_requests.remove(&node_id);
+                }
                 if let Some(url) = res.resolved_url.as_ref() {
                     let waiting_nodes = self.pending_images.remove(url).unwrap_or_default();
                     #[cfg(feature = "tracing")]
@@ -1474,7 +1485,13 @@ impl BaseDocument {
 
         match resource {
             Resource::Css(css) => {
-                let node_id = res.node_id.unwrap();
+                let Some(node_id) = res.node_id else {
+                    return;
+                };
+                if self.stylesheet_requests.get(&node_id) != Some(&res.request_id) {
+                    return;
+                }
+                self.stylesheet_requests.remove(&node_id);
                 self.add_stylesheet_for_node(css, node_id);
             }
             Resource::ImportedCss(import_rule, sheet) => {

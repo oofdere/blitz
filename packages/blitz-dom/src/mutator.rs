@@ -1287,6 +1287,10 @@ impl<'doc> DocumentMutator<'doc> {
             // ancestor chain, IME disable on blur of a focused input).
             doc.clear_interaction_state_for_removed_node(node_id);
 
+            if let Some(request) = doc.stylesheet_requests.remove(&node_id) {
+                doc.pending_critical_resources.remove(&request);
+            }
+
             let node = &mut doc.nodes[node_id];
 
             // Clear the text selection if one of its endpoints references this node.
@@ -1367,6 +1371,9 @@ impl<'doc> DocumentMutator<'doc> {
     }
 
     fn load_linked_stylesheet(&mut self, target_id: NodeId) {
+        if let Some(request) = self.doc.stylesheet_requests.remove(&target_id) {
+            self.doc.pending_critical_resources.remove(&request);
+        }
         let node = &self.doc.nodes[target_id];
 
         let mut is_in_head = false;
@@ -1413,6 +1420,9 @@ impl<'doc> DocumentMutator<'doc> {
                 .pending_critical_resources
                 .insert(handler.request_id());
         }
+        self.doc
+            .stylesheet_requests
+            .insert(target_id, handler.request_id());
 
         self.doc.net_provider.fetch(
             self.doc.id(),

@@ -365,6 +365,15 @@ Each patch below fixes something those calls reach, and each has a test in
     selected text and `innerText` leave the spacers and their joiners out.
     `InlineSpacer::from_id` tells a spacer's inline box from an atomic
     inline's. Twelve tests. New.
+59. **A style sheet answers only the `<link>` still waiting for it.** The
+    answer to a link's request went to the link's node whatever had become
+    of it: a link taken out of the document before its sheet came made blitz
+    index a dead node and panic, and a link whose `href` had asked for
+    another sheet, or that had been moved and asked again, took whichever
+    answer came last. The document now keeps the request each link waits on,
+    and passes over any other answer. A request given up, by a removal or a
+    new request, no longer holds rendering up as a critical resource. Three
+    tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
