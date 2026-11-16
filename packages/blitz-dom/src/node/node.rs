@@ -133,6 +133,8 @@ pub struct Node {
     /// Whether the last paint-tree build of this node found it a box that
     /// paints its positioned descendants: a stacking context or a paint layer.
     pub paints_positioned: Cell<bool>,
+    /// The layout parent this node had when its paint lists were last built.
+    pub painted_under: Cell<Option<NodeId>>,
 
     // Flags
     pub flags: NodeFlags,
@@ -436,6 +438,7 @@ impl Node {
             stacking_context: None,
             sc_contribution_cache: RefCell::new(ThinVec::new()),
             paints_positioned: Cell::new(false),
+            painted_under: Cell::new(None),
 
             flags: NodeFlags::empty(),
             out_of_flow: AtomicBool::new(false),

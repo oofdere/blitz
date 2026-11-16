@@ -163,3 +163,42 @@ fn a_box_positioned_later_paints_the_fixed_box_inside_it() {
     assert_eq!(painted(&doc, outer), painted(&fresh, fresh_outer));
     assert_eq!(painted(&doc, outer).map(|painted| painted.len()), Some(2));
 }
+
+/// A positioned box, and beside it or inside it, as `inside` says, a static
+/// box holding a fixed box two static boxes down.
+fn moved(inside: bool) -> (BaseDocument, NodeId, NodeId) {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "");
+    let body = create(&mut doc, html, "margin: 0");
+    let positioned = create(&mut doc, body, "position: relative");
+    let outer = create(&mut doc, if inside { positioned } else { body }, "");
+    let middle = create(&mut doc, outer, "");
+    create(
+        &mut doc,
+        middle,
+        "position: fixed; top: 40px; left: 30px; width: 50px; height: 50px",
+    );
+    doc.resolve(0.0);
+    (doc, positioned, outer)
+}
+
+/// A static subtree moved into a positioned box after a layout has the
+/// positioned box paint the fixed box inside it, as it does when the subtree
+/// was there from the start, though nothing in the subtree changed.
+#[test]
+fn a_fixed_box_moved_into_a_positioned_box_is_painted_by_it() {
+    let (mut doc, positioned, outer) = moved(false);
+    doc.mutate().append_children(positioned, &[outer]);
+    doc.resolve(0.0);
+    let (fresh, fresh_positioned, _) = moved(true);
+    assert_eq!(painted(&doc, positioned), painted(&fresh, fresh_positioned));
+    assert_eq!(
+        painted(&doc, positioned).map(|painted| painted.len()),
+        Some(2)
+    );
+}

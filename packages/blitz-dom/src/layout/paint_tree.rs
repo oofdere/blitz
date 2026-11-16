@@ -229,6 +229,14 @@ impl BaseDocument {
         node_id: NodeId,
         stacking_context: Option<&mut ThinVec<HoistedPaintChild>>,
     ) {
+        // Which box paints an out-of-flow box contained further out depends on the boxes between
+        // the two (`tree_order_painter`), so a subtree that was moved to another parent builds
+        // its lists again, though nothing in it changed.
+        let moved = {
+            let node = &self.nodes[node_id];
+            let parent = node.layout_parent.get();
+            node.painted_under.replace(parent) != parent
+        };
         {
             let node = &self.nodes[node_id];
             // `propagate_damage_flags` stores the union of a node's own and
@@ -244,6 +252,7 @@ impl BaseDocument {
             // this node was last built with.
             let role_unchanged = node.stacking_context.is_some() == stacking_context.is_none();
             let clean = !self.scratch.rebuild_paint
+                && !moved
                 && role_unchanged
                 && !node
                     .damage()
@@ -269,7 +278,7 @@ impl BaseDocument {
         let paints = stacking_context.is_none() || self.nodes[node_id].is_paint_layer_root();
         let rebuild_paint = self.scratch.rebuild_paint;
         self.scratch.rebuild_paint |=
-            self.nodes[node_id].paints_positioned.replace(paints) != paints;
+            moved || self.nodes[node_id].paints_positioned.replace(paints) != paints;
 
         // Entries hoisted out of this subtree are collected directly into the
         // storage that will hold them afterwards: the node's own stacking
