@@ -289,6 +289,16 @@ Each patch below fixes something those calls reach, and each has a test in
     `html` checks. The root element's box and the initial containing block now
     take the body's direction, and the viewport scrolls from the origin it
     gives, with or without the feature. Six tests. New.
+49. **What a box clips adds nothing to its parent's scrollable overflow.** A box
+    gave its parent its whole scrollable overflow, also on an axis it clips, so
+    the viewport of patch 43 scrolled over what a scroll container holds: a
+    100px list with 2,000px in it made the page scroll 1,400px. A box now gives
+    only its border box on an axis whose used `overflow` is not `visible`. One
+    test. New.
+50. **Containment keeps the body's `overflow` its own.** CSS Containment 2
+    (section 3) turns off what the body gives the viewport when the root
+    element or the body has containment, its `overflow` as well as its writing
+    mode (patch 48). Patch 45 did not check. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
@@ -303,7 +313,7 @@ as patch 38 (seed 1223). Patches 42 to 44 come from Lens's reads of niso's
 scroll offsets (`read77`), patch 45 from propagating the body's overflow as
 CSS Overflow 3 says, patch 46 from Lens's two gaps in patch 45, and patch 47
 from niso's frames fuzzer (seed 2121). Patch 48 is the first of niso's list for
-later.
+later, and patches 49 and 50 came up while it was made.
 
 With all of them, the fuzzer has no panicking or broken seed in 2,000 debug and
 20,000 release seeds, and Lens's fuzzer has no panicking seed and no broken list
