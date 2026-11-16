@@ -59,6 +59,23 @@ fn table_around(middle: &str) -> (BaseDocument, [NodeId; 4]) {
     (doc, [ul, a, b, c])
 }
 
+/// A box in an anonymous cell whose style changes after the table was laid out is laid out with
+/// its new style.
+#[test]
+fn a_block_in_a_table_restyled_later_takes_its_new_style() {
+    let (mut doc, [ul, a, b, c]) = table_around("height: 5px; width: 10px");
+    let style = QualName::new(None, ns!(), LocalName::from("style"));
+    let restyled = "height: 5px; width: 10px; border: 2px solid; margin-left: 3px";
+    doc.mutate().set_attribute(b, style, restyled);
+    doc.resolve(0.0);
+    assert_eq!(rect(&doc, ul), (0.0, 0.0, 37.0, 10.0));
+    assert_eq!(rect(&doc, a), (0.0, 0.0, 10.0, 10.0));
+    assert_eq!(rect(&doc, b), (13.0, 0.0, 14.0, 9.0));
+    assert_eq!(rect(&doc, c).0, 27.0);
+    let fresh = table_around(restyled);
+    assert_eq!(rect(&doc, b), rect(&fresh.0, fresh.1[2]));
+}
+
 #[test]
 fn a_block_in_a_table_sits_in_a_cell_of_its_own() {
     let (doc, [ul, a, b, c]) = table_around("height: 5px; width: 10px");

@@ -67,6 +67,12 @@ impl BaseDocument {
         };
         let mut damage = own_damage;
 
+        // A box among a table's cells that is no table part is placed in the table's grid with
+        // its style as it was when the table was built, so a change to it builds the table again.
+        if own_damage.intersects(RestyleDamage::RELAYOUT) && self.sits_in_anonymous_cell(node_id) {
+            damage.insert(CONSTRUCT_BOX);
+        }
+
         // Skip subtrees which contain no damage. Anonymous nodes are never
         // skipped themselves because damage marking walks the DOM parent
         // chain, which bypasses anonymous boxes: a damaged node's flagged
@@ -199,6 +205,41 @@ impl BaseDocument {
 
         // Propagate damage to parent
         damage_for_parent
+    }
+
+    /// Whether the box of `node_id` is a block-level box among a table's cells, which the table
+    /// places in an anonymous cell of its own (CSS 2.1 section 17.2.1).
+    fn sits_in_anonymous_cell(&self, node_id: NodeId) -> bool {
+        let node = &self.nodes[node_id];
+        let Some(display) = node.display_style() else {
+            return false;
+        };
+        let block_level = matches!(
+            display.inside(),
+            DisplayInside::Flow
+                | DisplayInside::FlowRoot
+                | DisplayInside::Flex
+                | DisplayInside::Grid
+                | DisplayInside::GridLanes
+                | DisplayInside::Table
+        ) && !matches!(
+            display.outside(),
+            DisplayOutside::TableCaption | DisplayOutside::None
+        );
+        block_level
+            && node
+                .parent
+                .and_then(|parent| self.nodes[parent].display_style())
+                .is_some_and(|parent| {
+                    matches!(
+                        parent.inside(),
+                        DisplayInside::Table
+                            | DisplayInside::TableRowGroup
+                            | DisplayInside::TableHeaderGroup
+                            | DisplayInside::TableFooterGroup
+                            | DisplayInside::TableRow
+                    )
+                })
     }
 
     /// Refresh owned anonymous boxes without revisiting their DOM children.
