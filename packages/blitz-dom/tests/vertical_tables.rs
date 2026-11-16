@@ -3,8 +3,14 @@
 //! that writing mode from the start.
 #![cfg(feature = "writing-mode")]
 
-use blitz_dom::{BaseDocument, DocumentConfig, LocalName, NodeId, QualName, ns};
+use blitz_dom::{
+    BaseDocument, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet, ns,
+};
 use blitz_traits::shell::{ColorScheme, Viewport};
+
+/// The rules the tests need, so that they run with or without blitz's own sheet.
+const UA_CSS: &str = "html, body, div { display: block } table { display: table } \
+                      tr { display: table-row } td { display: table-cell }";
 
 fn element(doc: &mut BaseDocument, parent: NodeId, name: &str, style: &str) -> NodeId {
     let mut mutator = doc.mutate();
@@ -34,7 +40,10 @@ fn boxes(
     style: &str,
     build: impl Fn(&mut BaseDocument, NodeId) -> NodeId,
 ) -> Vec<(f32, f32, f32, f32)> {
-    let mut doc = BaseDocument::new(DocumentConfig::default());
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        ..DocumentConfig::default()
+    });
     doc.set_viewport(Viewport::new(800, 600, 1.0, ColorScheme::Light));
     let document = doc.root_node().id;
     let changed = build(&mut doc, document);
