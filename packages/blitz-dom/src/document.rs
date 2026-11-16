@@ -2516,6 +2516,12 @@ impl BaseDocument {
         (pos, *self.nodes[node_id].unrounded_layout())
     }
 
+    /// `node_id`'s unrounded layout in physical coordinates, relative to the box that places it.
+    #[cfg(not(feature = "writing-mode"))]
+    pub(crate) fn physical_unrounded_layout(&self, node_id: NodeId) -> taffy::Layout {
+        *self.nodes[node_id].unrounded_layout()
+    }
+
     /// Computes the size and position of the `Node` relative to the viewport
     pub fn get_client_bounding_rect(&self, node_id: NodeId) -> Option<BoundingRect> {
         // Non-atomic inline elements have no layout box of their own: return
@@ -2524,7 +2530,8 @@ impl BaseDocument {
             return rects.reduce(BoundingRect::union);
         }
 
-        let size = self.get_node(node_id)?.unrounded_layout().size;
+        self.get_node(node_id)?;
+        let size = self.physical_unrounded_layout(node_id).size;
         let border_box = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
         Some(self.bounding_rect_in_viewport(node_id, border_box, true, false))
     }
@@ -2556,7 +2563,7 @@ impl BaseDocument {
                 let scroll = node.scroll_offset();
                 to_viewport = kurbo::Affine::translate((-scroll.x, -scroll.y)) * to_viewport;
             }
-            let location = node.unrounded_layout().location;
+            let location = self.physical_unrounded_layout(id).location;
             let mut to_parent = kurbo::Affine::translate((location.x as f64, location.y as f64));
             if let Some(transform) = node.transform().as_deref().filter(|_| transforms) {
                 // Stored in device pixels (S * T * S^-1): back to CSS pixels.

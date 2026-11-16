@@ -468,6 +468,18 @@ mod tests {
     }
 }
 
+/// `node`'s unrounded layout, placed by an algorithm running in `placer_wm` within a box of
+/// physical size `placer_size`, in physical coordinates.
+fn node_physical_layout(node: &Node, placer_wm: WritingMode, placer_size: Size<f32>) -> Layout {
+    let overflow = node.layout_style().overflow();
+    physical_layout(
+        *node.unrounded_layout(),
+        placer_wm,
+        placer_size,
+        overflow.x.is_scroll_container() || overflow.y.is_scroll_container(),
+    )
+}
+
 /// `logical`, written by a placing algorithm running in `placer_wm` within a box of physical size
 /// `placer_size`, in physical coordinates.
 fn physical_layout(
@@ -541,16 +553,29 @@ impl BaseDocument {
         let root_id = self.try_root_element().map(|root| root.id);
         let node = &self.nodes[node_id];
         let (mut pos, placer_wm, placer_size) = self.placer_geometry(node, node_id, root_id);
-        let overflow = node.layout_style().overflow();
-        let layout = physical_layout(
-            *node.unrounded_layout(),
-            placer_wm,
-            placer_size,
-            overflow.x.is_scroll_container() || overflow.y.is_scroll_container(),
-        );
+        let layout = node_physical_layout(node, placer_wm, placer_size);
         pos.x += layout.location.x - node.scroll_offset().x as f32;
         pos.y += layout.location.y - node.scroll_offset().y as f32;
         (pos, layout)
+    }
+
+    /// `node_id`'s unrounded layout in physical coordinates, relative to the box that places
+    /// it, as [`Self::physical_unrounded_geometry`] converts it. Only a box placed by a vertical
+    /// one needs its placer's geometry.
+    pub(crate) fn physical_unrounded_layout(&self, node_id: crate::NodeId) -> Layout {
+        let root_id = self.try_root_element().map(|root| root.id);
+        let node = &self.nodes[node_id];
+        let placer_wm = match node.containing_block().filter(|_| Some(node_id) != root_id) {
+            Some(placer) => self.nodes[placer].layout_data().writing_mode,
+            None => root_id.map_or(WritingMode::empty(), |root| {
+                self.nodes[root].layout_data().writing_mode
+            }),
+        };
+        if !placer_wm.is_vertical() {
+            return *node.unrounded_layout();
+        }
+        let (_, placer_wm, placer_size) = self.placer_geometry(node, node_id, root_id);
+        node_physical_layout(node, placer_wm, placer_size)
     }
 
     /// Document-relative position, writing mode and physical size of the box that places `node`.
