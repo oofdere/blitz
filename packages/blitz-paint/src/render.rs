@@ -1183,12 +1183,13 @@ impl ElementCx<'_, '_> {
         // Regular children
         if let Some(children) = &*self.node.paint_children.borrow() {
             for child_id in children {
-                // Fixed-position children of the root element are positioned against
-                // the viewport and do not scroll with it, so cancel out the viewport
-                // scroll (applied in `paint_scene`). A fixed box contained by a
-                // transformed ancestor scrolls with it like any out-of-flow box.
+                // Fixed-position children of the root element placed against the
+                // viewport do not scroll with it, so cancel out the viewport scroll
+                // (applied in `paint_scene`). A fixed box contained by a transformed
+                // ancestor, the root element included, scrolls with it like any
+                // out-of-flow box.
                 let child = &self.context.dom.as_ref().tree()[*child_id];
-                let child_transform = if child.taffy_position() == taffy::Position::Fixed
+                let child_transform = if child.is_fixed_to_viewport()
                     && Some(self.node.id) == self.context.root_element_id
                 {
                     let scroll = self.context.dom.as_ref().viewport_scroll();

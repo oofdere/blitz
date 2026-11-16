@@ -1643,11 +1643,11 @@ impl Node {
             let mut child_x = x;
             let mut child_y = y;
             if child_position.is_out_of_flow() {
-                // Fixed-position children of the root element are positioned
-                // against the viewport and do not scroll with it. (A fixed box
-                // whose containing block is a transformed ancestor scrolls with
-                // that ancestor like any other out-of-flow box.)
-                if child_position == taffy::Position::Fixed && self.containing_block().is_none() {
+                // Fixed-position boxes placed against the viewport do not scroll
+                // with it. (A fixed box whose containing block is a transformed
+                // ancestor, the root element included, scrolls with it like any
+                // other out-of-flow box.)
+                if child.is_fixed_to_viewport() {
                     child_x -= self.scroll_offset().x as f32;
                     child_y -= self.scroll_offset().y as f32;
                     let viewport_scroll = self.tree().viewport_scroll();
@@ -1872,6 +1872,31 @@ impl Node {
         self.oof_containing_block
             .get()
             .or_else(|| self.layout_parent.get())
+    }
+
+    /// Whether this is a fixed-position box placed against the viewport, which
+    /// no scroll moves. Layout hands the root element every fixed box no
+    /// ancestor claims, placed against the initial containing block; a fixed
+    /// box the root element claims itself, as a transform, a filter or
+    /// containment makes it do, is placed against its padding box and scrolls
+    /// with the page like anything else it holds (CSS Transforms 1 §2).
+    pub fn is_fixed_to_viewport(&self) -> bool {
+        if self.taffy_position() != taffy::Position::Fixed {
+            return false;
+        }
+        let Some(containing_block) = self.containing_block().and_then(|id| self.tree().get(id))
+        else {
+            return true;
+        };
+        let is_root_element = containing_block.is_element()
+            && containing_block
+                .parent
+                .and_then(|parent| self.tree().get(parent))
+                .is_some_and(|parent| parent.parent.is_none());
+        is_root_element
+            && !containing_block.primary_styles().is_some_and(|style| {
+                stylo_taffy::convert::establishes_fixed_containing_block(&style)
+            })
     }
 
     /// Computes the Document-relative coordinates of the `Node`

@@ -2534,9 +2534,9 @@ impl BaseDocument {
     /// each of its containing blocks, and the scroll offset of each containing block, as
     /// CSSOM View's `getBoundingClientRect`. A box's own scroll offset moves what is in it,
     /// not the box: it counts only when `rect` is content of the node that `scrolled` with
-    /// it, as a fragment of its inline content is. A fixed box held by the root element is
-    /// placed against the viewport, so neither the root element's scroll offset nor the
-    /// viewport's moves it or what is in it. Without `transforms`, as the `offset*`
+    /// it, as a fragment of its inline content is. Neither the root element's scroll offset
+    /// nor the viewport's moves a fixed box placed against the viewport
+    /// ([`Node::is_fixed_to_viewport`]) or what is in it. Without `transforms`, as the `offset*`
     /// attributes, which ignore them.
     fn bounding_rect_in_viewport(
         &self,
@@ -2550,7 +2550,6 @@ impl BaseDocument {
         let mut current = Some(node_id);
         let mut scrolls = scrolled;
         let mut viewport_scrolls = true;
-        let root_element = self.try_root_element().map(|root| root.id);
         while let Some(id) = current {
             let node = &self.nodes[id];
             if scrolls {
@@ -2566,8 +2565,7 @@ impl BaseDocument {
             }
             to_viewport = to_parent * to_viewport;
             current = node.containing_block();
-            let fixed = node.taffy_position() == taffy::Position::Fixed
-                && (current.is_none() || current == root_element);
+            let fixed = node.is_fixed_to_viewport();
             viewport_scrolls &= !fixed;
             scrolls = !fixed;
         }

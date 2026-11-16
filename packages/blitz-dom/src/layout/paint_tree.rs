@@ -36,13 +36,12 @@ pub fn hoisted_child_position(tree: &NodeTree, sc_root_id: NodeId, child_id: Nod
     let mut position = Point::ZERO;
     let mut current = child.containing_block();
 
-    // A fixed-position box whose containing block is the root element is
-    // positioned against the viewport and does not scroll with it: cancel the
-    // scroll the walk below (or the stacking-context root itself) applies.
-    // A fixed box contained by a transformed ancestor scrolls with it.
-    if child.taffy_position() == taffy::Position::Fixed
+    // A fixed-position box placed against the viewport does not scroll with
+    // it: cancel the scroll the walk below (or the stacking-context root
+    // itself) applies. A fixed box contained by a transformed ancestor, the
+    // root element included, scrolls with it.
+    if child.is_fixed_to_viewport()
         && let Some(cb) = current.and_then(|id| tree.get(id))
-        && cb.containing_block().is_none()
     {
         let scroll_offset = *cb.scroll_offset();
         let viewport_scroll = tree.viewport_scroll();

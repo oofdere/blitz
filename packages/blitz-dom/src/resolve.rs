@@ -226,7 +226,7 @@ impl BaseDocument {
             }
             let child_rect_in_self = self.resolve_transforms(child_id, resolve_all);
             overflow = overflow.union(child_rect_in_self);
-            if self.nodes[child_id].taffy_position() != taffy::Position::Fixed {
+            if !self.nodes[child_id].is_fixed_to_viewport() {
                 scrolled = scrolled.union(child_rect_in_self);
             }
         }
