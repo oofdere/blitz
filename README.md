@@ -462,6 +462,14 @@ Each patch below fixes something those calls reach, and each has a test in
     column to the last, and a row group its rows (CSS 2.1 §17.5), against
     the table. They are still not painted, and a table in a vertical
     writing mode does not place them yet. One test. New.
+72. **An atomic inline widens its inline parent's box but does not make it
+    taller.** A non-atomic inline element's box took the height of the
+    atomic inlines in it, as if they were its text. Its height is now the
+    content area of its text (CSS 2.1 §10.6.1), and an atomic inline in it
+    only widens it. On a line where it has no text of its own, it takes the
+    root inline box's content area, which is its own when it has the root's
+    font: Parley does not give the metrics of a span with no text. One test.
+    New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

@@ -2027,9 +2027,14 @@ impl Node {
             });
         }
 
-        // One rect per line box: the union of all of the target's fragments on that line
+        // One rect per line box: the union of all of the target's fragments on that line. Its
+        // height is the content area of its text (CSS 2's 10.6.1): an atomic inline in it widens
+        // it but does not make it taller. With no text of its own on a line, it takes the root
+        // inline box's content area there, which is its own when it has the root's font.
+        let root_span = layout.root_span_metrics();
         Some(layout.lines().filter_map(move |line| {
             let mut line_rect: Option<taffy::Rect<f32>> = None;
+            let mut atomic: Option<(f32, f32)> = None;
 
             for item in line.items() {
                 match item {
@@ -2056,17 +2061,27 @@ impl Node {
                         if !is_in_target(node) {
                             continue;
                         }
-                        let x0 = inline_box.x;
-                        let y0 = inline_box.y;
-                        union(
-                            &mut line_rect,
-                            x0,
-                            y0,
-                            x0 + inline_box.width,
-                            y0 + inline_box.height,
-                        );
+                        let (x0, x1) = (inline_box.x, inline_box.x + inline_box.width);
+                        atomic = Some(match atomic {
+                            Some((left, right)) => (left.min(x0), right.max(x1)),
+                            None => (x0, x1),
+                        });
                     }
                 }
+            }
+            if let Some((x0, x1)) = atomic {
+                let (top, bottom) = match (line_rect, root_span) {
+                    (Some(rect), _) => (rect.top, rect.bottom),
+                    (None, Some(span)) => {
+                        let baseline = line.metrics().baseline;
+                        (baseline - span.ascent, baseline + span.descent)
+                    }
+                    (None, None) => {
+                        let metrics = line.metrics();
+                        (metrics.block_min_coord, metrics.block_max_coord)
+                    }
+                };
+                union(&mut line_rect, x0, top, x1, bottom);
             }
 
             line_rect.map(|rect| taffy::Rect {
