@@ -191,3 +191,96 @@ fn a_transformed_box_resized_by_a_change_elsewhere() {
     let (x, _, width, height) = read(false);
     assert_eq!((x, width, height), (0.0, 0.0, 20.0));
 }
+
+fn scroll(doc: &mut BaseDocument, node: NodeId, x: f64, y: f64) {
+    *doc.get_node_mut(node).unwrap().scroll_offset_mut() = blitz_dom::Point { x, y };
+}
+
+/// A scroll container's own scroll offset moves what is in it, not the container.
+#[test]
+fn a_scrolled_container_stays_and_its_content_moves() {
+    let (mut doc, body) = page();
+    element(&mut doc, body, "div", "height: 20px", "");
+    let list = element(&mut doc, body, "div", "height: 50px; overflow: auto", "");
+    let item = element(&mut doc, list, "div", "height: 200px", "");
+    doc.resolve(0.0);
+    scroll(&mut doc, list, 0.0, 30.0);
+    assert_eq!(rect(&doc, list), (0.0, 20.0, 800.0, 50.0));
+    assert_eq!(rect(&doc, item), (0.0, -10.0, 800.0, 200.0));
+}
+
+/// Text in a scrolled container moves with it: an inline element's fragments are its
+/// inline root's content.
+#[test]
+fn an_inline_element_in_a_scrolled_container_moves() {
+    let (mut doc, body) = page();
+    let list = element(&mut doc, body, "div", "height: 50px; overflow: auto", "");
+    let span = element(&mut doc, list, "span", "", "x");
+    element(&mut doc, list, "div", "height: 200px", "");
+    doc.resolve(0.0);
+    let (_, before, ..) = rect(&doc, span);
+    scroll(&mut doc, list, 0.0, 30.0);
+    let (_, after, ..) = rect(&doc, span);
+    assert_eq!(after, before - 30.0);
+}
+
+/// A fixed box and what is in it stay where they are when the page scrolls, and a box
+/// in flow moves.
+#[test]
+fn a_fixed_box_stays_when_the_page_scrolls() {
+    let (mut doc, body) = page();
+    let normal = element(&mut doc, body, "div", "height: 3000px", "");
+    let fixed = element(
+        &mut doc,
+        body,
+        "div",
+        "position: fixed; top: 10px; width: 100px; height: 100px; overflow: auto",
+        "",
+    );
+    let inside = element(&mut doc, fixed, "div", "height: 400px", "");
+    doc.resolve(0.0);
+    doc.set_viewport_scroll(blitz_dom::Point { x: 0.0, y: 300.0 });
+    assert_eq!(rect(&doc, normal), (0.0, -300.0, 800.0, 3000.0));
+    assert_eq!(rect(&doc, fixed), (0.0, 10.0, 100.0, 100.0));
+    assert_eq!(rect(&doc, inside), (0.0, 10.0, 100.0, 400.0));
+    scroll(&mut doc, fixed, 0.0, 40.0);
+    assert_eq!(rect(&doc, fixed), (0.0, 10.0, 100.0, 100.0));
+    assert_eq!(rect(&doc, inside), (0.0, -30.0, 100.0, 400.0));
+}
+
+/// A scroll container's offset is in its own space, so its transform scales it.
+#[test]
+fn a_scaled_container_scrolls_its_content_scaled() {
+    let (mut doc, body) = page();
+    let list = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 100px; height: 100px; overflow: auto; transform: scale(2); transform-origin: 0 0",
+        "",
+    );
+    let item = element(&mut doc, list, "div", "height: 400px", "");
+    doc.resolve(0.0);
+    scroll(&mut doc, list, 0.0, 40.0);
+    assert_eq!(rect(&doc, list), (0.0, 0.0, 200.0, 200.0));
+    assert_eq!(rect(&doc, item), (0.0, -80.0, 200.0, 800.0));
+}
+
+/// A box scaled inside a scrolled container moves by the container's offset, unscaled.
+#[test]
+fn a_scaled_box_in_a_scrolled_container_moves_by_its_offset() {
+    let (mut doc, body) = page();
+    let list = element(&mut doc, body, "div", "height: 50px; overflow: auto", "");
+    let scaled = element(
+        &mut doc,
+        list,
+        "div",
+        "width: 100px; height: 200px; transform: scale(2); transform-origin: 0 0",
+        "",
+    );
+    let inside = element(&mut doc, scaled, "div", "height: 5px", "");
+    doc.resolve(0.0);
+    scroll(&mut doc, list, 0.0, 40.0);
+    assert_eq!(rect(&doc, scaled), (0.0, -40.0, 200.0, 400.0));
+    assert_eq!(rect(&doc, inside), (0.0, -40.0, 200.0, 10.0));
+}

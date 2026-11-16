@@ -2522,30 +2522,39 @@ impl BaseDocument {
 
         let size = self.get_node(node_id)?.unrounded_layout().size;
         let border_box = kurbo::Rect::new(0.0, 0.0, size.width as f64, size.height as f64);
-        Some(self.bounding_rect_in_viewport(node_id, border_box, true))
+        Some(self.bounding_rect_in_viewport(node_id, border_box, true, false))
     }
 
     /// The bounding box, in viewport coordinates, of `rect` given in the coordinates of
-    /// `node_id`'s border box: through the position, scroll offset and `transform` of the
-    /// node and of each of its containing blocks, as CSSOM View's `getBoundingClientRect`.
-    /// Without `transforms`, as the `offset*` attributes, which ignore them.
+    /// `node_id`'s border box: through the position and `transform` of the node and of
+    /// each of its containing blocks, and the scroll offset of each containing block, as
+    /// CSSOM View's `getBoundingClientRect`. A box's own scroll offset moves what is in it,
+    /// not the box: it counts only when `rect` is content of the node that `scrolled` with
+    /// it, as a fragment of its inline content is. A fixed box held by the root element is
+    /// placed against the viewport, so neither the root element's scroll offset nor the
+    /// viewport's moves it or what is in it. Without `transforms`, as the `offset*`
+    /// attributes, which ignore them.
     fn bounding_rect_in_viewport(
         &self,
         node_id: NodeId,
         rect: kurbo::Rect,
         transforms: bool,
+        scrolled: bool,
     ) -> BoundingRect {
         let scale = self.viewport.scale_f64();
         let mut to_viewport = kurbo::Affine::IDENTITY;
         let mut current = Some(node_id);
+        let mut scrolls = scrolled;
+        let mut viewport_scrolls = true;
+        let root_element = self.try_root_element().map(|root| root.id);
         while let Some(id) = current {
             let node = &self.nodes[id];
+            if scrolls {
+                let scroll = node.scroll_offset();
+                to_viewport = kurbo::Affine::translate((-scroll.x, -scroll.y)) * to_viewport;
+            }
             let location = node.unrounded_layout().location;
-            let scroll = node.scroll_offset();
-            let mut to_parent = kurbo::Affine::translate((
-                location.x as f64 - scroll.x,
-                location.y as f64 - scroll.y,
-            ));
+            let mut to_parent = kurbo::Affine::translate((location.x as f64, location.y as f64));
             if let Some(transform) = node.transform().as_deref().filter(|_| transforms) {
                 // Stored in device pixels (S * T * S^-1): back to CSS pixels.
                 to_parent *=
@@ -2553,8 +2562,15 @@ impl BaseDocument {
             }
             to_viewport = to_parent * to_viewport;
             current = node.containing_block();
+            let fixed = node.taffy_position() == taffy::Position::Fixed
+                && (current.is_none() || current == root_element);
+            viewport_scrolls &= !fixed;
+            scrolls = !fixed;
         }
-        let scroll = self.viewport_scroll();
+        let scroll = match viewport_scrolls {
+            true => self.viewport_scroll(),
+            false => crate::Point::ZERO,
+        };
         let bounds = (kurbo::Affine::translate((-scroll.x, -scroll.y)) * to_viewport)
             .transform_rect_bbox(rect);
         BoundingRect {
@@ -2668,7 +2684,7 @@ impl BaseDocument {
                 rect.right as f64,
                 rect.bottom as f64,
             );
-            self.bounding_rect_in_viewport(inline_root_id, rect, transforms)
+            self.bounding_rect_in_viewport(inline_root_id, rect, transforms, true)
         }))
     }
 
