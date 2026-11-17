@@ -161,6 +161,41 @@ fn an_inline_element_is_as_tall_as_its_content_area() {
     );
 }
 
+/// An inline element's box is its border box: its content area on its line, which
+/// \`Node::inline_fragment_boxes\` gives with the padding and border at its start and end,
+/// and its padding and border above and below that.
+#[test]
+fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
+    let (mut doc, body) = page();
+    let parent = element(&mut doc, body, "div", "line-height: 40px", "");
+    let node = element(
+        &mut doc,
+        parent,
+        "span",
+        "padding: 3px 7px; border: 1px solid",
+        "abc",
+    );
+    doc.resolve(0.0);
+    let content = doc
+        .get_node(node)
+        .unwrap()
+        .inline_fragment_boxes()
+        .unwrap()
+        .next()
+        .unwrap();
+    let (left, top) = (content.left as f64, content.top as f64);
+    let (width, height) = (
+        (content.right - content.left) as f64,
+        (content.bottom - content.top) as f64,
+    );
+    let border_box = (left, top - 4.0, width, height + 8.0);
+    assert_eq!(rect(&doc, node), border_box);
+    let client = doc.node_client_rects(node);
+    assert_eq!(client.len(), 1);
+    let client = (client[0].x, client[0].y, client[0].width, client[0].height);
+    assert_eq!(client, border_box);
+}
+
 /// A transformed box whose size changes because something else changed (here, the
 /// width of its shrink-to-fit container) must have its transform resolved again: its
 /// origin is the centre of its new box.

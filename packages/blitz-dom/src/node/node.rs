@@ -1978,7 +1978,10 @@ impl Node {
     }
 
     /// The per-line-box fragment boxes of a non-atomic inline element, in CSS pixels relative
-    /// to the border box of its inline root.
+    /// to the border box of its inline root. Each is the element's content area on its line,
+    /// with its padding and border at the inline start and end but not above or below it;
+    /// [`BaseDocument::inline_fragment_rects`](crate::BaseDocument::inline_fragment_rects)
+    /// adds those for the border box.
     ///
     /// Returns `None` for nodes that have their own layout box.
     pub fn inline_fragment_boxes(&self) -> Option<impl Iterator<Item = taffy::Rect<f32>> + '_> {

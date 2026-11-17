@@ -2685,8 +2685,11 @@ impl BaseDocument {
     }
 
     /// Computes per-line-box fragment rects for a non-atomic inline element by walking
-    /// the containing inline root's text layout. Returns `None` for nodes that have
-    /// their own layout box (which should use `get_client_bounding_rect` instead).
+    /// the containing inline root's text layout: each is the element's border box on that
+    /// line, [`Node::inline_fragment_boxes`] (its content area there) grown by its padding
+    /// and border above and below, as CSSOM View's `getClientRects` gives an inline box.
+    /// `inline_fragment_boxes` itself stays the content area. Returns `None` for nodes that
+    /// have their own layout box (which should use `get_client_bounding_rect` instead).
     pub fn inline_fragment_rects(
         &self,
         node_id: NodeId,
@@ -2706,14 +2709,37 @@ impl BaseDocument {
         let fragments = node.inline_fragment_boxes()?;
         let inline_root = node.inline_root_ancestor()?;
 
+        // Padding percentages resolve against the inline root's content box width.
+        let root_layout = inline_root.unrounded_layout();
+        let width = root_layout.size.width
+            - root_layout.padding.left
+            - root_layout.padding.right
+            - root_layout.border.left
+            - root_layout.border.right;
+        let (above, below) = node.primary_styles().map_or((0.0, 0.0), |styles| {
+            let padding = styles.get_padding();
+            let border = styles.get_border();
+            let resolve = |padding: &style::values::computed::NonNegativeLengthPercentage| {
+                padding
+                    .0
+                    .resolve(style::values::computed::Length::new(width))
+                    .px()
+            };
+            (
+                (resolve(&padding.padding_top) + border.border_top_width.0.to_f32_px()) as f64,
+                (resolve(&padding.padding_bottom) + border.border_bottom_width.0.to_f32_px())
+                    as f64,
+            )
+        });
+
         // Fragment boxes are relative to the inline root's border box.
         let inline_root_id = inline_root.id;
         Some(fragments.map(move |rect| {
             let rect = kurbo::Rect::new(
                 rect.left as f64,
-                rect.top as f64,
+                rect.top as f64 - above,
                 rect.right as f64,
-                rect.bottom as f64,
+                rect.bottom as f64 + below,
             );
             self.bounding_rect_in_viewport(inline_root_id, rect, transforms, true)
         }))
