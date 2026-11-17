@@ -2725,10 +2725,15 @@ impl BaseDocument {
                     .resolve(style::values::computed::Length::new(width))
                     .px()
             };
+            let top =
+                stylo_taffy::convert::border(&border.border_top_width, border.border_top_style);
+            let bottom = stylo_taffy::convert::border(
+                &border.border_bottom_width,
+                border.border_bottom_style,
+            );
             (
-                (resolve(&padding.padding_top) + border.border_top_width.0.to_f32_px()) as f64,
-                (resolve(&padding.padding_bottom) + border.border_bottom_width.0.to_f32_px())
-                    as f64,
+                (resolve(&padding.padding_top) + top.into_raw().value()) as f64,
+                (resolve(&padding.padding_bottom) + bottom.into_raw().value()) as f64,
             )
         });
 

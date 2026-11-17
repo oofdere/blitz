@@ -194,6 +194,21 @@ fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
     assert_eq!(client.len(), 1);
     let client = (client[0].x, client[0].y, client[0].width, client[0].height);
     assert_eq!(client, border_box);
+
+    let plain = element(&mut doc, parent, "span", "border-width: 3px", "abc");
+    doc.resolve(0.0);
+    let content = doc
+        .get_node(plain)
+        .unwrap()
+        .inline_fragment_boxes()
+        .unwrap()
+        .next()
+        .unwrap();
+    assert_eq!(
+        rect(&doc, plain).1,
+        content.top as f64,
+        "a border whose style is none adds nothing"
+    );
 }
 
 /// A margin is outside its own inline element's box but inside the box of the inline
