@@ -162,8 +162,10 @@ fn an_inline_element_is_as_tall_as_its_content_area() {
 }
 
 /// An inline element's box is its border box: its content area on its line, which
-/// \`Node::inline_fragment_boxes\` gives with the padding and border at its start and end,
-/// and its padding and border above and below that.
+/// `Node::inline_fragment_boxes` gives with the padding and border at its start and end,
+/// and its padding and border above and below that. The fragment box is layout's own,
+/// in `f32`; the client rect is snapped to a 1/64px grid, as every CSSOM rect blitz gives
+/// is (Blink's `LayoutUnit`), so the border box expected here is snapped the same way.
 #[test]
 fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
     let (mut doc, body) = page();
@@ -188,7 +190,8 @@ fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
         (content.right - content.left) as f64,
         (content.bottom - content.top) as f64,
     );
-    let border_box = (left, top - 4.0, width, height + 8.0);
+    let snap = |value: f64| (value * 64.0).round() / 64.0;
+    let border_box = (snap(left), snap(top - 4.0), snap(width), snap(height + 8.0));
     assert_eq!(rect(&doc, node), border_box);
     let client = doc.node_client_rects(node);
     assert_eq!(client.len(), 1);
@@ -206,7 +209,7 @@ fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
         .unwrap();
     assert_eq!(
         rect(&doc, plain).1,
-        content.top as f64,
+        snap(content.top as f64),
         "a border whose style is none adds nothing"
     );
 }
