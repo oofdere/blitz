@@ -80,7 +80,8 @@ fn width(node: &Node, end: bool, margin: bool, basis: Option<f32>) -> f32 {
 /// and to the content outside it unless white space stands between them, and white space after a
 /// spacer that followed white space is dropped, as it collapses with that white space. So is
 /// white space after spacers at the start of the inline formatting context, and at the end of
-/// the text that ends its content, before the spacers that end its elements: CSS removes
+/// the text that ends its content and after it, among the spacers that end its elements and in
+/// any element that comes after: CSS removes
 /// collapsible spaces at the start and the end of a line (CSS Text 3, 4.1.2), and Parley does
 /// only where nothing stands between them and the line's edge.
 #[derive(Default)]
@@ -92,6 +93,8 @@ pub(crate) struct Edges {
     join_next: bool,
     /// The text node that ends the content of the inline formatting context, if a text node does.
     last: Option<NodeId>,
+    /// Whether that text node was pushed, so that only white space comes after.
+    ended: bool,
 }
 
 impl Edges {
@@ -107,8 +110,8 @@ impl Edges {
 
     /// The text of the text node `node`, about to be pushed, as the spacers around it leave it:
     /// without the collapsible white space at its start if white space or nothing came before
-    /// them, without that at its end if it ends the content, and joined to them if they end an
-    /// element and it starts with no white space.
+    /// them, without that at its end if it ends the content or comes after the text that does,
+    /// and joined to them if they end an element and it starts with no white space.
     pub(crate) fn text<'a>(
         &mut self,
         builder: &mut TreeBuilder<TextBrush>,
@@ -122,8 +125,9 @@ impl Edges {
         } else {
             text
         };
-        if self.last == Some(node) {
+        if self.ended || self.last == Some(node) {
             text = text.trim_end_matches(collapsible);
+            self.ended = true;
         }
         if text.is_empty() {
             return text;

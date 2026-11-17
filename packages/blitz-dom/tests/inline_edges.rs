@@ -357,3 +357,46 @@ fn white_space_after_an_inside_marker_collapses_only_with_its_space() {
         "after a bullet"
     );
 }
+
+/// The rectangles of the elements `build` puts in a block, in the order it gives them.
+fn built(build: impl Fn(&mut BaseDocument, NodeId) -> Vec<NodeId>) -> Vec<Rect> {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, "html");
+    doc.mutate().append_children(root, &[html]);
+    let body = element(&mut doc, html, "body", "margin: 0", "");
+    let div = element(&mut doc, body, "div", "", "");
+    let elements = build(&mut doc, div);
+    doc.resolve(0.0);
+    elements.into_iter().map(|node| rect(&doc, node)).collect()
+}
+
+/// White space that comes after the text that ends the content, between elements' edges or in
+/// `display: contents`, is at the end of the line too, and goes.
+#[test]
+fn white_space_after_the_last_text_goes_too() {
+    let padded = "padding: 0 7px";
+    let spaced = built(|doc, div| {
+        let first = element(doc, div, "span", padded, "aaa ");
+        text(doc, div, " ");
+        let second = element(doc, div, "span", padded, " ");
+        vec![first, second]
+    });
+    let bare = built(|doc, div| {
+        let first = element(doc, div, "span", padded, "aaa");
+        let second = element(doc, div, "span", padded, "");
+        vec![first, second]
+    });
+    assert_eq!(spaced, bare, "between edges");
+    let spaced = built(|doc, div| {
+        let first = element(doc, div, "span", padded, "aaa ");
+        element(doc, div, "span", "display: contents", " ");
+        vec![first]
+    });
+    let bare = built(|doc, div| vec![element(doc, div, "span", padded, "aaa")]);
+    assert_eq!(spaced, bare, "in display: contents");
+}
