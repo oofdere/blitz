@@ -2104,8 +2104,10 @@ impl Node {
                         union(&mut line_rect, x0, y0, x1, y1);
                     }
                     PositionedLayoutItem::InlineBox(inline_box) => {
+                        // A margin is outside its own element's box but inside those of
+                        // the inline elements around it.
                         let node = match crate::InlineSpacer::from_id(inline_box.id) {
-                            Some(spacer) if spacer.margin => continue,
+                            Some(spacer) if spacer.margin && spacer.node == self.id => continue,
                             Some(spacer) => spacer.node,
                             None => NodeId::from_u64(inline_box.id),
                         };

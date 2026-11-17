@@ -196,6 +196,20 @@ fn an_inline_element_s_box_has_its_padding_and_border_above_and_below() {
     assert_eq!(client, border_box);
 }
 
+/// A margin is outside its own inline element's box but inside the box of the inline
+/// element around it.
+#[test]
+fn an_inline_element_holds_the_margins_of_the_inline_elements_in_it() {
+    let (mut doc, body) = page();
+    let parent = element(&mut doc, body, "div", "", "");
+    let outer = element(&mut doc, parent, "span", "", "");
+    let inner = element(&mut doc, outer, "span", "margin: 0 5px", "abc");
+    doc.resolve(0.0);
+    let (x, y, width, height) = rect(&doc, inner);
+    assert_eq!(x, 5.0);
+    assert_eq!(rect(&doc, outer), (0.0, y, width + 10.0, height));
+}
+
 /// A transformed box whose size changes because something else changed (here, the
 /// width of its shrink-to-fit container) must have its transform resolved again: its
 /// origin is the centre of its new box.
