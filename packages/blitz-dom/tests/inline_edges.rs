@@ -104,11 +104,12 @@ fn moved(block: &str, style: &str) -> ([f64; 3], f64) {
     moved_in(block, style, ["aaa", "bbb", "ccc"])
 }
 
-/// The same, with these three words.
+/// The same, with these three words. The line stays: the boxes of the inner span and the one
+/// after do not move up or down. The span's own box grows by its border and padding above.
 fn moved_in(block: &str, style: &str, words: [&str; 3]) -> ([f64; 3], f64) {
     let plain = line_of(block, "", words);
     let styled = line_of(block, style, words);
-    for (plain, styled) in plain.iter().zip(&styled) {
+    for (plain, styled) in plain.iter().zip(&styled).skip(1) {
         assert_eq!(plain.y, styled.y, "{style} keeps the line");
     }
     (
