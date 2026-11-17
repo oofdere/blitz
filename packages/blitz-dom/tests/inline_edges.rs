@@ -315,3 +315,45 @@ fn white_space_at_the_start_and_end_of_a_line_goes_inside_the_edges() {
         }
     }
 }
+
+/// Where the word of a list item whose marker is inside it starts: the item holds `space` and
+/// then the word in a span.
+fn word_after_marker(list_style: &str, space: &str) -> f64 {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, "html");
+    doc.mutate().append_children(root, &[html]);
+    let body = element(&mut doc, html, "body", "margin: 0", "");
+    let item = element(
+        &mut doc,
+        body,
+        "div",
+        &format!("display: list-item; list-style: inside {list_style}"),
+        "",
+    );
+    if !space.is_empty() {
+        text(&mut doc, item, space);
+    }
+    let word = element(&mut doc, item, "span", "", "xx");
+    doc.resolve(0.0);
+    rect(&doc, word).x
+}
+
+/// White space at the start of a list item's content stays after a marker inside it that is a
+/// string, which ends in no space, and collapses with the space a bullet ends in.
+#[test]
+fn white_space_after_an_inside_marker_collapses_only_with_its_space() {
+    assert!(
+        word_after_marker("\"-\"", " ") > word_after_marker("\"-\"", ""),
+        "after a string"
+    );
+    assert_eq!(
+        word_after_marker("disc", " "),
+        word_after_marker("disc", ""),
+        "after a bullet"
+    );
+}

@@ -96,12 +96,12 @@ pub(crate) struct Edges {
 
 impl Edges {
     /// The edges of an inline formatting context whose content the text node `last` ends, if
-    /// one does, before anything is pushed.
+    /// one does. What comes before the first spacers, such as a marker inside a list item, is
+    /// left to Parley.
     pub(crate) fn new(last: Option<NodeId>) -> Edges {
         Edges {
-            after_space: true,
-            join_next: false,
             last,
+            ..Edges::default()
         }
     }
 
