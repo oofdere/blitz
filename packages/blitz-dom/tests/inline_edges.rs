@@ -269,3 +269,49 @@ fn edges_set_or_taken_away_later_take_their_width() {
     let wider = "margin: 0 5px; border: 2px solid; padding: 0 9px";
     assert_eq!(restyled(edges, wider), line("", wider));
 }
+
+/// The rectangles of two elements styled `style` that hold these two words and fill a line,
+/// each in a plain span of its own when `nested`, as a list's items hold its links.
+fn ends(style: &str, nested: bool, words: [&str; 2]) -> [Rect; 2] {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, "html");
+    doc.mutate().append_children(root, &[html]);
+    let body = element(&mut doc, html, "body", "margin: 0", "");
+    let div = element(&mut doc, body, "div", "", "");
+    let spans = words.map(|word| {
+        let parent = match nested {
+            true => element(&mut doc, div, "span", "", ""),
+            false => div,
+        };
+        element(&mut doc, parent, "span", style, word)
+    });
+    doc.resolve(0.0);
+    spans.map(|span| rect(&doc, span))
+}
+
+/// Collapsible spaces at the start and the end of a line are removed (CSS Text 3, 4.1.2), also
+/// inside an element whose edges stand between them and the line's edge: the elements of
+/// `" aaa "` and `" bbb "` are where and as wide as those of `"aaa "` and `"bbb"`, and the
+/// space between the words stays.
+#[test]
+fn white_space_at_the_start_and_end_of_a_line_goes_inside_the_edges() {
+    for style in [
+        "padding: 0 7px",
+        "margin: 0 3px",
+        "border: 1px solid",
+        "margin: 3px; padding: 3px 7px; border: 1px solid transparent",
+    ] {
+        for nested in [false, true] {
+            assert_eq!(
+                ends(style, nested, [" aaa ", " bbb "]),
+                ends(style, nested, ["aaa ", "bbb"]),
+                "{style}, nested {nested}"
+            );
+        }
+    }
+}

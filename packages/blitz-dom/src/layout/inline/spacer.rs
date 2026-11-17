@@ -78,50 +78,77 @@ fn width(node: &Node, end: bool, margin: bool, basis: Option<f32>) -> f32 {
 /// A spacer is a U+FFFC in the text, which a line may break on either side of, and which white
 /// space does not collapse across. So a word joiner keeps each spacer to its element's content,
 /// and to the content outside it unless white space stands between them, and white space after a
-/// spacer that followed white space is dropped, as it collapses with that white space.
+/// spacer that followed white space is dropped, as it collapses with that white space. So is
+/// white space after spacers at the start of the inline formatting context, and at the end of
+/// the text that ends its content, before the spacers that end its elements: CSS removes
+/// collapsible spaces at the start and the end of a line (CSS Text 3, 4.1.2), and Parley does
+/// only where nothing stands between them and the line's edge.
 #[derive(Default)]
 pub(crate) struct Edges {
-    /// Whether white space came before the spacers just pushed.
+    /// Whether white space came before the spacers just pushed, or nothing did.
     after_space: bool,
     /// Whether end spacers were just pushed, which the next text is joined to unless it starts
     /// with white space.
     join_next: bool,
+    /// The text node that ends the content of the inline formatting context, if a text node does.
+    last: Option<NodeId>,
 }
 
 impl Edges {
-    /// The text node's `text`, about to be pushed, as the spacers before it leave it: without
-    /// the collapsible white space at its start if white space came before them, and joined to
-    /// them if they end an element and it starts with no white space.
+    /// The edges of an inline formatting context whose content the text node `last` ends, if
+    /// one does, before anything is pushed.
+    pub(crate) fn new(last: Option<NodeId>) -> Edges {
+        Edges {
+            after_space: true,
+            join_next: false,
+            last,
+        }
+    }
+
+    /// The text of the text node `node`, about to be pushed, as the spacers around it leave it:
+    /// without the collapsible white space at its start if white space or nothing came before
+    /// them, without that at its end if it ends the content, and joined to them if they end an
+    /// element and it starts with no white space.
     pub(crate) fn text<'a>(
         &mut self,
         builder: &mut TreeBuilder<TextBrush>,
+        node: NodeId,
         text: &'a str,
         collapse: WhiteSpaceCollapse,
     ) -> &'a str {
-        let collapsible: &[char] = match collapse {
-            WhiteSpaceCollapse::Collapse => &[' ', '\t', '\n', '\r'],
-            WhiteSpaceCollapse::PreserveBreaks => &[' ', '\t'],
-            _ => &[],
-        };
-        let text = if self.after_space {
+        let collapsible = collapsible(collapse);
+        let mut text = if self.after_space {
             text.trim_start_matches(collapsible)
         } else {
             text
         };
+        if self.last == Some(node) {
+            text = text.trim_end_matches(collapsible);
+        }
         if text.is_empty() {
             return text;
         }
         if self.join_next && !text.starts_with(char::is_whitespace) {
             builder.push_text(WORD_JOINER);
         }
-        *self = Edges::default();
+        self.clear();
         text
     }
 
     /// Forgets the spacers: an atomic inline or a forced break comes next, which a line may break
     /// beside anyway.
     pub(crate) fn clear(&mut self) {
-        *self = Edges::default();
+        self.after_space = false;
+        self.join_next = false;
+    }
+}
+
+/// The characters white space of this kind collapses.
+pub(crate) fn collapsible(collapse: WhiteSpaceCollapse) -> &'static [char] {
+    match collapse {
+        WhiteSpaceCollapse::Collapse => &[' ', '\t', '\n', '\r'],
+        WhiteSpaceCollapse::PreserveBreaks => &[' ', '\t'],
+        _ => &[],
     }
 }
 
@@ -221,7 +248,8 @@ impl Edges {
     /// what comes before if none does.
     fn boundary(&mut self, builder: &mut TreeBuilder<TextBrush>, end: bool) {
         let text = builder.text();
-        let space_before = builder.has_pending_whitespace()
+        let space_before = text.is_empty()
+            || builder.has_pending_whitespace()
             || text.ends_with(char::is_whitespace)
             || (self.after_space && text.ends_with(['\u{FFFC}', '\u{2060}']));
         if !space_before && !text.is_empty() {

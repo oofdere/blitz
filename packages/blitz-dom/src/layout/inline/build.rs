@@ -14,7 +14,7 @@ use stylo_taffy::CopyStyleGetters;
 
 use super::spacer;
 use crate::{
-    NodeData,
+    Node, NodeData,
     layout::list::BULLET_FONT_FAMILY,
     layout::replaced::is_inline_box_element,
     layout::text_transform::{CaseTransform, TextTransformer},
@@ -87,6 +87,7 @@ pub(crate) fn build_inline_layout_into(
     // The marker is a separate box, so words in the content don't continue from it.
     let mut text_transformer = TextTransformer::default();
     text_transformer.word_break(&builder);
+    text_transformer.edges = spacer::Edges::new(last_text(nodes, root_node));
 
     if let Some(before_id) = root_node.before() {
         build_inline_layout_recursive(
@@ -319,7 +320,7 @@ pub(crate) fn build_inline_layout_into(
                 let mut edges = std::mem::take(&mut text_transformer.edges);
                 let text =
                     text_transformer.transform(&data.content, parent_text_transform, builder);
-                let text = edges.text(builder, text, collapse);
+                let text = edges.text(builder, node_id, text, collapse);
                 builder.push_text(text);
                 text_transformer.edges = edges;
             }
@@ -329,4 +330,73 @@ pub(crate) fn build_inline_layout_into(
             NodeData::Document(_) => unreachable!(),
         }
     }
+}
+
+/// The text node that ends the content of the inline formatting context `root` lays out, if a
+/// text node does rather than an atomic inline or a forced break. Inline elements and their
+/// edges, `display: contents`, boxes taken out of flow, and text that is all white space that
+/// collapses end nothing.
+fn last_text(nodes: &crate::NodeTree, root: &Node) -> Option<NodeId> {
+    match last_content(nodes, root)? {
+        Last::Text(id) => Some(id),
+        Last::Other => None,
+    }
+}
+
+/// What ends the content of an inline formatting context.
+enum Last {
+    Text(NodeId),
+    Other,
+}
+
+/// What ends the content in `node`, the root or an inline element or `display: contents`
+/// in it, its own and its pseudo-elements', in the order [`build_inline_layout_into`] pushes it.
+fn last_content(nodes: &crate::NodeTree, node: &Node) -> Option<Last> {
+    node.after()
+        .into_iter()
+        .chain(node.children.iter().rev().copied())
+        .chain(node.before())
+        .find_map(|id| {
+            let child = &nodes[id];
+            match &child.data {
+                NodeData::Text(data) => {
+                    let collapse = child
+                        .parent
+                        .and_then(|parent| nodes[parent].primary_styles())
+                        .map(|s| {
+                            stylo_to_parley::white_space_collapse(s.clone_white_space_collapse())
+                        })
+                        .unwrap_or(WhiteSpaceCollapse::Collapse);
+                    let collapsible = spacer::collapsible(collapse);
+                    data.content
+                        .contains(|c| !collapsible.contains(&c))
+                        .then_some(Last::Text(id))
+                }
+                NodeData::Element(element) | NodeData::AnonymousBlock(element) => {
+                    let hidden = *element.name.local == *"input"
+                        && element.attr(local_name!("type")) == Some("hidden");
+                    let style = child.primary_styles();
+                    let out_of_flow = style.as_ref().is_some_and(|s| {
+                        s.clone_position().is_absolutely_positioned()
+                            || s.clone_float().is_floating()
+                    });
+                    let display = child.display_style().unwrap_or(Display::inline());
+                    match (display.outside(), display.inside()) {
+                        _ if hidden || out_of_flow => None,
+                        (DisplayOutside::None, DisplayInside::None) => None,
+                        (DisplayOutside::None, DisplayInside::Contents) => {
+                            last_content(nodes, child)
+                        }
+                        (DisplayOutside::Inline, DisplayInside::Flow)
+                            if !is_inline_box_element(element)
+                                && element.name.local != local_name!("br") =>
+                        {
+                            last_content(nodes, child)
+                        }
+                        _ => Some(Last::Other),
+                    }
+                }
+                _ => None,
+            }
+        })
 }
