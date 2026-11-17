@@ -365,9 +365,10 @@ impl LayoutPassState<'_> {
                             );
                         }
                         None | Some("text" | "password" | "email" | "tel" | "url" | "search") => {
-                            return compute_leaf_layout(
+                            let style = node.layout_style();
+                            let mut output = compute_leaf_layout(
                                 inputs,
-                                &node.layout_style(),
+                                &style,
                                 resolve_calc_value,
                                 |_known_size, _available_space| taffy::Size {
                                     width: match inputs.available_space.width {
@@ -378,6 +379,32 @@ impl LayoutPassState<'_> {
                                     height: resolved_line_height.unwrap_or(16.0),
                                 },
                             );
+                            // A text field's baseline is its text's: the first line of its
+                            // editor, centred in the content box as it is painted.
+                            let width = inputs.parent_size.width;
+                            let pb = style.padding().resolve_or_zero(width, resolve_calc_value)
+                                + style.border().resolve_or_zero(width, resolve_calc_value);
+                            drop(style);
+                            let doc = &*self.doc;
+                            let scale = doc.viewport.scale();
+                            let text = doc.nodes[dom_node_id(node_id)]
+                                .data
+                                .downcast_element()
+                                .and_then(|element| element.text_input_data())
+                                .and_then(|input| input.editor.try_layout());
+                            if let Some(text) = text {
+                                let content = output.size.height - pb.vertical_axis_sum();
+                                let centred = ((content - text.height() / scale) / 2.0).max(0.0);
+                                let baseline = text
+                                    .lines()
+                                    .next()
+                                    .map(|line| pb.top + centred + line.metrics().baseline / scale);
+                                output.baselines = taffy::Baselines {
+                                    first: baseline,
+                                    last: baseline,
+                                };
+                            }
+                            return output;
                         }
                         _ => {}
                     }

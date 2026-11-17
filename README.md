@@ -476,6 +476,11 @@ Each patch below fixes something those calls reach, and each has a test in
     where the line's hanging whitespace starts, as Parley measures it; spaces
     under `white-space: pre`, `pre-wrap`, `break-spaces` and
     `preserve-spaces` are kept. One test. New.
+74. **A text field sits on the baseline of its text.** A single-line text
+    input had no baseline, so its bottom margin edge sat on the line's
+    baseline and the line grew below it. It now has the baseline of its
+    editor's first line, centred in its content box as it is painted, as an
+    inline-block has its last line's (CSS 2.1 §10.8.1). One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
