@@ -1600,9 +1600,10 @@ impl Node {
             && y >= (overflow.y0 / scale) as f32
             && y <= (overflow.y1 / scale) as f32;
 
-        if !matches_self && !matches_content && !matches_hoisted_content && !matches_overflow {
-            return None;
-        }
+        // A box this one paints without containing it, or a fixed box placed against the
+        // viewport, can be outside all of these: only those children are tried then.
+        let outside =
+            !matches_self && !matches_content && !matches_hoisted_content && !matches_overflow;
 
         // Descendants overwrite, so the innermost scroll container's thumb
         // wins. Thumb coords are border-box relative (unscrolled).
@@ -1658,6 +1659,8 @@ impl Node {
             if let Some(offset) = child.lifted_paint_offset(self.id) {
                 child_x -= offset.x;
                 child_y -= offset.y;
+            } else if outside && !child.is_fixed_to_viewport() {
+                continue;
             } else if child_position.is_out_of_flow() && child.is_fixed_to_viewport() {
                 // Fixed-position boxes placed against the viewport do not scroll
                 // with it. (A fixed box whose containing block is a transformed
@@ -1672,6 +1675,9 @@ impl Node {
             if let Some(hit) = child.hit_inner(child_x, child_y, scale, scrollbar) {
                 return Some(hit);
             }
+        }
+        if outside {
+            return None;
         }
 
         // Negative z_index hoisted children

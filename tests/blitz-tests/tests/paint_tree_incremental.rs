@@ -511,8 +511,8 @@ fn oof_box_is_owned_by_containing_block() {
             "{msg}: tree order among positioned boxes: {cb_paint:?}"
         );
         assert!(
-            paint_children(&doc, root).contains(&fixed),
-            "{msg}: fixed owned by root"
+            paint_children(&doc, cb).contains(&fixed),
+            "{msg}: fixed painted by #cb, the positioned box around it"
         );
         assert_eq!(abs_pos(&doc, fixed), (10.0, 10.0), "{msg}");
         assert_eq!(hit(&doc, 20.0, 20.0), fixed, "{msg}");
@@ -530,8 +530,8 @@ fn oof_box_is_owned_by_containing_block() {
             "{msg}: fixed moved to #anc"
         );
         assert!(
-            !paint_children(&doc, root).contains(&fixed),
-            "{msg}: removed from root"
+            !paint_children(&doc, cb).contains(&fixed),
+            "{msg}: removed from #cb"
         );
         assert!(
             paint_children(&doc, anc).contains(&abs),
@@ -546,7 +546,7 @@ fn oof_box_is_owned_by_containing_block() {
 
         unhover(&mut doc);
         assert!(!paint_children(&doc, anc).contains(&fixed), "{msg}");
-        assert!(paint_children(&doc, root).contains(&fixed), "{msg}");
+        assert!(paint_children(&doc, cb).contains(&fixed), "{msg}");
         assert!(paint_children(&doc, cb).contains(&abs), "{msg}");
         assert_eq!(hit(&doc, 20.0, 20.0), fixed, "{msg}");
     }
