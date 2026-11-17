@@ -51,7 +51,10 @@ fn a_text_field_sits_on_the_baseline_of_its_text() {
 
         let field = doc.get_client_bounding_rect(field).unwrap();
         let line = doc.get_client_bounding_rect(line).unwrap();
-        assert!((field.height - (24.0 * 1.4 + 34.0)).abs() < 0.1, "{value:?}");
+        assert!(
+            (field.height - (24.0 * 1.4 + 34.0)).abs() < 0.1,
+            "{value:?}"
+        );
         assert_eq!((field.y, line.height), (0.0, field.height), "{value:?}");
     }
 }
