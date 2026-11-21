@@ -136,3 +136,26 @@ fn a_visible_child_of_a_hidden_box_is_hit() {
     assert_eq!(doc.element_from_point(25.0, 25.0), Some(child));
     assert_eq!(doc.element_from_point(75.0, 75.0), Some(body));
 }
+
+/// A child in flow that overflows a box with overflow: hidden or clip is cut at the
+/// box's padding box too: past it the point finds what is behind.
+#[test]
+fn a_clip_cuts_a_child_in_flow() {
+    for overflow in ["hidden", "clip"] {
+        let (mut doc, _html, body) = blank();
+        let clip = element(
+            &mut doc,
+            body,
+            "div",
+            &format!("overflow: {overflow}; width: 50px; height: 50px"),
+        );
+        let child = element(&mut doc, clip, "div", "width: 100px; height: 20px");
+        doc.resolve(0.0);
+        assert_eq!(
+            doc.element_from_point(25.0, 10.0),
+            Some(child),
+            "{overflow}"
+        );
+        assert_eq!(doc.element_from_point(75.0, 10.0), Some(body), "{overflow}");
+    }
+}
