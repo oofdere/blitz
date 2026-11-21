@@ -1516,15 +1516,14 @@ impl Node {
         use style::computed_values::pointer_events::T as PointerEvents;
         use style::computed_values::visibility::T as Visibility;
 
-        // Don't hit on visbility:hidden elements
-        if let Some(style) = self.primary_styles() {
-            if matches!(
+        // A visibility:hidden box is not hit itself, but its descendants are still
+        // tested: one may be visibility:visible again.
+        let invisible = self.primary_styles().is_some_and(|style| {
+            matches!(
                 style.clone_visibility(),
                 Visibility::Hidden | Visibility::Collapse
-            ) {
-                return None;
-            }
-        }
+            )
+        });
 
         // pointer-events:none makes this element transparent to hits, but its
         // descendants are still tested (one may restore pointer-events:auto).
@@ -1631,6 +1630,19 @@ impl Node {
             taffy::Point { x: 0.0, y: 0.0 }
         };
 
+        // A box that clips its overflow cuts its line boxes, and every box it contains, at its
+        // padding box on the axes where its overflow is not visible.
+        let clips_point = self
+            .used_overflow()
+            .is_some_and(|(overflow_x, overflow_y)| {
+                let x = x - self.scroll_offset().x as f32;
+                let y = y - self.scroll_offset().y as f32;
+                (overflow_x != Overflow::Visible
+                    && (x < layout.border.left || x > size.width - layout.border.right))
+                    || (overflow_y != Overflow::Visible
+                        && (y < layout.border.top || y > size.height - layout.border.bottom))
+            });
+
         // Positive z_index hoisted children
         if matches_hoisted_content {
             if let Some(hoisted) = &self.stacking_context {
@@ -1638,6 +1650,11 @@ impl Node {
                     let Some(child) = self.tree().get(hoisted_child.node_id) else {
                         continue;
                     };
+                    if clips_point && !child.is_fixed_to_viewport()
+                        || self.clipped_on_the_way(child, x, y)
+                    {
+                        continue;
+                    }
                     let pos = hoisted_child.position(self.tree(), self.id);
                     let x = x - pos.x;
                     let y = y - pos.y;
@@ -1653,10 +1670,16 @@ impl Node {
             let Some(child) = self.tree().get(*child_id) else {
                 continue;
             };
+            if clips_point && !child.is_fixed_to_viewport() {
+                continue;
+            }
             let child_position = child.taffy_position();
             let mut child_x = x;
             let mut child_y = y;
             if let Some(offset) = child.lifted_paint_offset(self.id) {
+                if self.clipped_on_the_way(child, x, y) {
+                    continue;
+                }
                 child_x -= offset.x;
                 child_y -= offset.y;
             } else if outside && !child.is_fixed_to_viewport() {
@@ -1687,6 +1710,11 @@ impl Node {
                     let Some(child) = self.tree().get(hoisted_child.node_id) else {
                         continue;
                     };
+                    if clips_point && !child.is_fixed_to_viewport()
+                        || self.clipped_on_the_way(child, x, y)
+                    {
+                        continue;
+                    }
                     let pos = hoisted_child.position(self.tree(), self.id);
                     let x = x - pos.x;
                     let y = y - pos.y;
@@ -1696,18 +1724,6 @@ impl Node {
                 }
             }
         }
-
-        // Line boxes are clipped to the padding box on axes where overflow is not visible.
-        let clips_point = self
-            .used_overflow()
-            .is_some_and(|(overflow_x, overflow_y)| {
-                let x = x - self.scroll_offset().x as f32;
-                let y = y - self.scroll_offset().y as f32;
-                (overflow_x != Overflow::Visible
-                    && (x < layout.border.left || x > size.width - layout.border.right))
-                    || (overflow_y != Overflow::Visible
-                        && (y < layout.border.top || y > size.height - layout.border.bottom))
-            });
 
         // Inline children
         if self.flags.is_inline_root() {
@@ -1727,7 +1743,12 @@ impl Node {
                     if let Some(text_node) = self.tree().get(node_id)
                         && !text_node.primary_styles().is_some_and(|style| {
                             style.clone_pointer_events() == PointerEvents::None
+                                || matches!(
+                                    style.clone_visibility(),
+                                    Visibility::Hidden | Visibility::Collapse
+                                )
                         })
+                        && (text_node.primary_styles().is_some() || !invisible)
                     {
                         return Some(HitResult {
                             node_id,
@@ -1741,7 +1762,7 @@ impl Node {
         }
 
         // Self (this node)
-        if matches_self && !pointer_events_none {
+        if matches_self && !pointer_events_none && !invisible {
             return Some(HitResult {
                 node_id: self.id,
                 x: x - content_box_offset.x,
@@ -1751,6 +1772,42 @@ impl Node {
         }
 
         None
+    }
+
+    /// Whether the point (`x`, `y`), in this node's coordinates as its children
+    /// are given them, is cut away from `child`, a box this node paints without
+    /// being its parent, by a box between them that clips its overflow: one on
+    /// the chain of `child`'s containing blocks up to this node, whose padding
+    /// box the point is outside on an axis where its overflow is not visible.
+    /// A box that clips is in that chain exactly when it clips `child`.
+    fn clipped_on_the_way(&self, child: &Node, x: f32, y: f32) -> bool {
+        let tree = self.tree();
+        let mut current = child.containing_block();
+        while let Some(id) = current {
+            if id == self.id {
+                return false;
+            }
+            let Some(node) = tree.get(id) else {
+                return false;
+            };
+            if let Some((overflow_x, overflow_y)) = node.used_overflow() {
+                let origin = node
+                    .lifted_paint_offset(self.id)
+                    .unwrap_or(taffy::Point { x: 0.0, y: 0.0 });
+                let layout = node.final_layout();
+                let x = x - origin.x - layout.location.x;
+                let y = y - origin.y - layout.location.y;
+                if (overflow_x != Overflow::Visible
+                    && (x < layout.border.left || x > layout.size.width - layout.border.right))
+                    || (overflow_y != Overflow::Visible
+                        && (y < layout.border.top || y > layout.size.height - layout.border.bottom))
+                {
+                    return true;
+                }
+            }
+            current = node.containing_block();
+        }
+        false
     }
 
     /// Find the inline root ancestor of this node (or self if this is an inline root).
