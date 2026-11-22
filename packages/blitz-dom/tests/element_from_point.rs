@@ -159,3 +159,81 @@ fn a_clip_cuts_a_child_in_flow() {
         assert_eq!(doc.element_from_point(75.0, 10.0), Some(body), "{overflow}");
     }
 }
+
+/// A scroll container under a transform is scrolled inside its own box: the transform is
+/// undone first and the scroll offset added after. A box 100px square with `scale(2)`
+/// about its origin, scrolled 50px down past a first child 50px high, shows the second
+/// child at its top, and the point (10, 10) finds it, as in Chrome 157.
+#[test]
+fn a_scaled_scroll_container_finds_what_it_scrolled_under_the_point() {
+    let (mut doc, _html, body) = blank();
+    let scroller = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 100px; height: 100px; overflow: hidden; transform: scale(2); \
+         transform-origin: 0 0",
+    );
+    element(&mut doc, scroller, "div", "height: 50px");
+    let second = element(&mut doc, scroller, "div", "height: 250px");
+    doc.resolve(0.0);
+    doc.get_node_mut(scroller).unwrap().scroll_offset_mut().y = 50.0;
+    assert_eq!(doc.element_from_point(10.0, 10.0), Some(second));
+    assert_eq!(doc.element_from_point(10.0, 150.0), Some(second));
+}
+
+/// A box with `overflow: clip` cuts what it holds at the box `overflow-clip-margin` names,
+/// grown by its length, as Chrome 157 paints it and finds what is under a point in it: a
+/// `content-box` clip cuts inside the padding box. `overflow: hidden` makes a scroll
+/// container, which the margin does not move.
+#[test]
+fn a_clip_margin_moves_where_a_clip_cuts() {
+    for (style, inside, outside) in [
+        ("overflow-clip-margin: 20px", [60.0, 69.0], 75.0),
+        (
+            "overflow-clip-margin: content-box 5px; padding: 20px",
+            [16.0, 74.0],
+            76.0,
+        ),
+        (
+            "overflow-clip-margin: border-box; border: 10px solid",
+            [61.0, 69.0],
+            71.0,
+        ),
+        (
+            "overflow-clip-margin: border-box 5px; border: 10px solid",
+            [74.0, 74.0],
+            76.0,
+        ),
+    ] {
+        let (mut doc, _html, body) = blank();
+        let clip = element(
+            &mut doc,
+            body,
+            "div",
+            &format!("overflow: clip; width: 50px; height: 50px; {style}"),
+        );
+        let child = element(
+            &mut doc,
+            clip,
+            "div",
+            "width: 200px; height: 20px; margin-left: -20px",
+        );
+        doc.resolve(0.0);
+        let y = doc.get_node(child).unwrap().final_layout().location.y + 5.0;
+        for x in inside {
+            assert_eq!(doc.element_from_point(x, y), Some(child), "{style} at {x}");
+        }
+        assert_ne!(doc.element_from_point(outside, y), Some(child), "{style}");
+    }
+    let (mut doc, _html, body) = blank();
+    let clip = element(
+        &mut doc,
+        body,
+        "div",
+        "overflow: hidden; overflow-clip-margin: 20px; width: 50px; height: 50px",
+    );
+    let child = element(&mut doc, clip, "div", "width: 100px; height: 20px");
+    doc.resolve(0.0);
+    assert_ne!(doc.element_from_point(55.0, 10.0), Some(child));
+}

@@ -1534,14 +1534,18 @@ impl Node {
             .primary_styles()
             .is_some_and(|style| style.clone_pointer_events() == PointerEvents::None);
 
-        let mut x = x - self.final_layout().location.x + self.scroll_offset().x as f32;
-        let mut y = y - self.final_layout().location.y + self.scroll_offset().y as f32;
+        // The transform is the box's, so it is undone first, in its border box; the scroll
+        // offset moves what the box holds inside that, so it comes after.
+        let mut x = x - self.final_layout().location.x;
+        let mut y = y - self.final_layout().location.y;
 
         if let Some(t) = self.transform().as_deref() {
             let p = t.inverse() * kurbo::Point::new(x as f64 * scale, y as f64 * scale);
             x = (p.x / scale) as f32;
             y = (p.y / scale) as f32;
         }
+        x += self.scroll_offset().x as f32;
+        y += self.scroll_offset().y as f32;
 
         let size = self.final_layout().size;
         let matches_self = !(x < self.scroll_offset().x as f32
@@ -1634,17 +1638,11 @@ impl Node {
         };
 
         // A box that clips its overflow cuts its line boxes, and every box it contains, at its
-        // padding box on the axes where its overflow is not visible.
-        let clips_point = self
-            .used_overflow()
-            .is_some_and(|(overflow_x, overflow_y)| {
-                let x = x - self.scroll_offset().x as f32;
-                let y = y - self.scroll_offset().y as f32;
-                (overflow_x != Overflow::Visible
-                    && (x < layout.border.left || x > size.width - layout.border.right))
-                    || (overflow_y != Overflow::Visible
-                        && (y < layout.border.top || y > size.height - layout.border.bottom))
-            });
+        // overflow clip edge on the axes where its overflow is not visible.
+        let clips_point = self.clips_out(
+            x - self.scroll_offset().x as f32,
+            y - self.scroll_offset().y as f32,
+        );
 
         // Positive z_index hoisted children
         if matches_hoisted_content {
@@ -1781,8 +1779,9 @@ impl Node {
     /// are given them, is cut away from `child`, a box this node paints without
     /// being its parent, by a box between them that clips its overflow: one on
     /// the chain of `child`'s containing blocks up to this node, whose padding
-    /// box the point is outside on an axis where its overflow is not visible.
-    /// A box that clips is in that chain exactly when it clips `child`.
+    /// box the point is outside on an axis where its overflow is not visible
+    /// ([`Node::clips_out`]). A box that clips is in that chain exactly when it
+    /// clips `child`. Where a box is is worked out only for a box that clips.
     fn clipped_on_the_way(&self, child: &Node, x: f32, y: f32) -> bool {
         let tree = self.tree();
         let mut current = child.containing_block();
@@ -1793,24 +1792,74 @@ impl Node {
             let Some(node) = tree.get(id) else {
                 return false;
             };
-            if let Some((overflow_x, overflow_y)) = node.used_overflow() {
+            let clips = node
+                .used_overflow()
+                .is_some_and(|(overflow_x, overflow_y)| {
+                    overflow_x != Overflow::Visible || overflow_y != Overflow::Visible
+                });
+            if clips {
                 let origin = node
                     .lifted_paint_offset(self.id)
                     .unwrap_or(taffy::Point { x: 0.0, y: 0.0 });
-                let layout = node.final_layout();
-                let x = x - origin.x - layout.location.x;
-                let y = y - origin.y - layout.location.y;
-                if (overflow_x != Overflow::Visible
-                    && (x < layout.border.left || x > layout.size.width - layout.border.right))
-                    || (overflow_y != Overflow::Visible
-                        && (y < layout.border.top || y > layout.size.height - layout.border.bottom))
-                {
+                let location = node.final_layout().location;
+                if node.clips_out(x - origin.x - location.x, y - origin.y - location.y) {
                     return true;
                 }
             }
             current = node.containing_block();
         }
         false
+    }
+
+    /// Whether the point (`x`, `y`), in this box's border box, is outside the edge at which
+    /// it cuts off what it holds, on an axis where its overflow is not visible. A scroll
+    /// container (`overflow` of `scroll`, `auto` or `hidden` on either axis) cuts at its
+    /// padding box. A box with `overflow: clip` cuts at the box `overflow-clip-margin`
+    /// names grown by its length, where it paints the clip, so a `content-box` clip cuts
+    /// inside the padding box. Chrome 157 hits a box in flow there too, though it hits what
+    /// a positioned box holds out to that box's padding box.
+    pub(crate) fn clips_out(&self, x: f32, y: f32) -> bool {
+        use style::values::generics::box_::OverflowClipMarginBox;
+        let Some((overflow_x, overflow_y)) = self.used_overflow() else {
+            return false;
+        };
+        if overflow_x == Overflow::Visible && overflow_y == Overflow::Visible {
+            return false;
+        }
+        let layout = self.final_layout();
+        let (border, padding, size) = (layout.border, layout.padding, layout.size);
+        let padding_box = [
+            border.left,
+            border.top,
+            size.width - border.right,
+            size.height - border.bottom,
+        ];
+        let scrolls = |overflow: Overflow| {
+            matches!(
+                overflow,
+                Overflow::Scroll | Overflow::Auto | Overflow::Hidden
+            )
+        };
+        let [left, top, right, bottom] = match self.primary_styles() {
+            Some(style) if !scrolls(overflow_x) && !scrolls(overflow_y) => {
+                let margin = &style.get_margin().overflow_clip_margin;
+                let [left, top, right, bottom] = match margin.visual_box {
+                    OverflowClipMarginBox::PaddingBox => padding_box,
+                    OverflowClipMarginBox::ContentBox => [
+                        border.left + padding.left,
+                        border.top + padding.top,
+                        size.width - border.right - padding.right,
+                        size.height - border.bottom - padding.bottom,
+                    ],
+                    OverflowClipMarginBox::BorderBox => [0.0, 0.0, size.width, size.height],
+                };
+                let grow = margin.offset.px();
+                [left - grow, top - grow, right + grow, bottom + grow]
+            }
+            _ => padding_box,
+        };
+        (overflow_x != Overflow::Visible && (x < left || x > right))
+            || (overflow_y != Overflow::Visible && (y < top || y > bottom))
     }
 
     /// Find the inline root ancestor of this node (or self if this is an inline root).
