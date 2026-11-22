@@ -1815,9 +1815,11 @@ impl Node {
     /// it cuts off what it holds, on an axis where its overflow is not visible. A scroll
     /// container (`overflow` of `scroll`, `auto` or `hidden` on either axis) cuts at its
     /// padding box. A box with `overflow: clip` cuts at the box `overflow-clip-margin`
-    /// names grown by its length, where it paints the clip, so a `content-box` clip cuts
-    /// inside the padding box. Chrome 157 hits a box in flow there too, though it hits what
-    /// a positioned box holds out to that box's padding box.
+    /// names grown by its length, so a `content-box` clip cuts inside the padding box: this
+    /// cuts where the box paints its clip. Chrome 157 does the same for a box that has no
+    /// layer of its own, and for an absolutely positioned child of one that has, but it hits
+    /// the in-flow content of a layered box, one that is positioned, transformed or has a
+    /// `z-index`, out to the larger of its padding box and its clip-margin box.
     pub(crate) fn clips_out(&self, x: f32, y: f32) -> bool {
         use style::values::generics::box_::OverflowClipMarginBox;
         let Some((overflow_x, overflow_y)) = self.used_overflow() else {

@@ -185,7 +185,9 @@ fn a_scaled_scroll_container_finds_what_it_scrolled_under_the_point() {
 /// A box with `overflow: clip` cuts what it holds at the box `overflow-clip-margin` names,
 /// grown by its length, as Chrome 157 paints it and finds what is under a point in it: a
 /// `content-box` clip cuts inside the padding box. `overflow: hidden` makes a scroll
-/// container, which the margin does not move.
+/// container, which the margin does not move. The margin moves where a box positioned
+/// in the clipping box, and painted above it with a `z-index`, is cut too: one in a box
+/// 100px in, with a margin of 20px, is found from 80 to 169, as in Chrome 157.
 #[test]
 fn a_clip_margin_moves_where_a_clip_cuts() {
     for (style, inside, outside) in [
@@ -225,6 +227,27 @@ fn a_clip_margin_moves_where_a_clip_cuts() {
             assert_eq!(doc.element_from_point(x, y), Some(child), "{style} at {x}");
         }
         assert_ne!(doc.element_from_point(outside, y), Some(child), "{style}");
+    }
+    let (mut doc, _html, body) = blank();
+    let holder = element(
+        &mut doc,
+        body,
+        "div",
+        "position: relative; overflow: clip; overflow-clip-margin: 20px; \
+         margin-left: 100px; width: 50px; height: 50px",
+    );
+    let positioned = element(
+        &mut doc,
+        holder,
+        "div",
+        "position: absolute; z-index: 1; left: -100px; top: 0; width: 300px; height: 20px",
+    );
+    doc.resolve(0.0);
+    for x in [80.0, 169.0] {
+        assert_eq!(doc.element_from_point(x, 10.0), Some(positioned), "at {x}");
+    }
+    for x in [79.0, 171.0] {
+        assert_ne!(doc.element_from_point(x, 10.0), Some(positioned), "at {x}");
     }
     let (mut doc, _html, body) = blank();
     let clip = element(
