@@ -149,3 +149,21 @@ fn a_root_with_paint_containment_cuts_what_the_viewport_scrolls() {
     );
     assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
 }
+
+/// A root element with paint containment cuts at its padding box whatever its
+/// `overflow-clip-margin`: Chrome 157's `scrollHeight` is the viewport's 600 for a root
+/// 100px high with `contain: paint` and a clip margin of 300px or 800px, over a child
+/// 1200px high.
+#[test]
+fn a_root_with_paint_containment_ignores_its_clip_margin() {
+    for margin in ["300px", "800px", "content-box"] {
+        let html = format!("contain: paint; height: 100px; overflow-clip-margin: {margin}");
+        let mut doc = page(&html, "height: 1200px");
+        assert_eq!(
+            doc.viewport_scroll_area(),
+            kurbo::Rect::new(0.0, 0.0, 800.0, 600.0),
+            "{margin}"
+        );
+        assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)), "{margin}");
+    }
+}

@@ -1849,7 +1849,10 @@ impl Node {
     /// the in-flow content of a layered box, one that is positioned, transformed or has a
     /// `z-index`, out to the larger of its padding box and its clip-margin box. A box with
     /// paint containment and no scrolling cuts as `overflow: clip` does, at its clip-margin
-    /// box: Chrome 157 neither shows nor finds what such a box holds past it.
+    /// box: Chrome 157 neither shows nor finds what such a box holds past it. The root
+    /// element, whose `overflow` is the viewport's, cuts at its padding box whatever its
+    /// `overflow-clip-margin`: Chrome 157 ignores the margin's length and its box on a root
+    /// with `contain: paint`, in what it paints, hits and scrolls.
     pub(crate) fn overflow_clip_edge(&self) -> Option<([f32; 4], bool, bool)> {
         use style::values::computed::Contain;
         use style::values::generics::box_::OverflowClipMarginBox;
@@ -1883,7 +1886,11 @@ impl Node {
             )
         };
         let edge = match self.primary_styles() {
-            Some(style) if !scrolls(overflow_x) && !scrolls(overflow_y) => {
+            Some(style)
+                if !scrolls(overflow_x)
+                    && !scrolls(overflow_y)
+                    && !self.gives_overflow_to_viewport() =>
+            {
                 let margin = &style.get_margin().overflow_clip_margin;
                 let [left, top, right, bottom] = match margin.visual_box {
                     OverflowClipMarginBox::PaddingBox => padding_box,
