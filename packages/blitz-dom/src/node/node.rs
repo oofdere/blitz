@@ -315,9 +315,13 @@ impl Node {
         &mut self.layout_data_mut().scrollable_overflow
     }
 
-    /// The part of [`Node::scrollable_overflow`] that counts in a scroll range, in device
-    /// pixels in this node's border box: all of it but what a box with layout containment
-    /// holds past its border box, and cut at each overflow clip edge as a parent gets it.
+    /// What this node's descendants reach that counts in its scroll range, in device pixels
+    /// in its border box: what [`Node::scrollable_overflow`] has of them but what a box with
+    /// layout containment holds past its border box, cut at each overflow clip edge as a
+    /// parent gets it. Its own border box is not in it, so content that ends inside its
+    /// border still shows past its padding box, and a node that holds nothing has an empty
+    /// rectangle at its origin. A scroll container leaves out what lies wholly before its
+    /// scroll origin on either axis, which it cannot scroll to, as Chrome 157 does.
     #[inline]
     pub fn scrolled_overflow(&self) -> &KurboRect {
         &self.layout_data().scrolled_overflow
@@ -1835,18 +1839,33 @@ impl Node {
 
     /// The edge at which this box cuts off what it holds, as left, top, right and bottom in
     /// its border box, and whether it cuts on each axis: on an axis where its overflow is not
-    /// visible, and nothing for a box whose overflow is visible on both. A scroll
+    /// visible, on both for a box with paint containment (CSS Containment 2, section 3.3),
+    /// and nothing for a box whose overflow is visible on both and has none. A scroll
     /// container (`overflow` of `scroll`, `auto` or `hidden` on either axis) cuts at its
     /// padding box. A box with `overflow: clip` cuts at the box `overflow-clip-margin`
     /// names grown by its length, so a `content-box` clip cuts inside the padding box: this
     /// cuts where the box paints its clip. Chrome 157 does the same for a box that has no
     /// layer of its own, and for an absolutely positioned child of one that has, but it hits
     /// the in-flow content of a layered box, one that is positioned, transformed or has a
-    /// `z-index`, out to the larger of its padding box and its clip-margin box.
+    /// `z-index`, out to the larger of its padding box and its clip-margin box. A box with
+    /// paint containment and no scrolling cuts as `overflow: clip` does, at its clip-margin
+    /// box: Chrome 157 neither shows nor finds what such a box holds past it.
     pub(crate) fn overflow_clip_edge(&self) -> Option<([f32; 4], bool, bool)> {
+        use style::values::computed::Contain;
         use style::values::generics::box_::OverflowClipMarginBox;
         let (overflow_x, overflow_y) = self.used_overflow()?;
-        if overflow_x == Overflow::Visible && overflow_y == Overflow::Visible {
+        let painted = !self.is_non_atomic_inline()
+            && self.primary_styles().is_some_and(|style| {
+                style
+                    .get_box()
+                    .slow_clone_contain()
+                    .contains(Contain::PAINT)
+            });
+        let (cuts_x, cuts_y) = (
+            painted || overflow_x != Overflow::Visible,
+            painted || overflow_y != Overflow::Visible,
+        );
+        if !cuts_x && !cuts_y {
             return None;
         }
         let layout = self.final_layout();
@@ -1881,11 +1900,7 @@ impl Node {
             }
             _ => padding_box,
         };
-        Some((
-            edge,
-            overflow_x != Overflow::Visible,
-            overflow_y != Overflow::Visible,
-        ))
+        Some((edge, cuts_x, cuts_y))
     }
 
     /// Find the inline root ancestor of this node (or self if this is an inline root).

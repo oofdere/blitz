@@ -366,3 +366,99 @@ fn layout_containment_on_a_plain_inline_does_not_stop_the_page_extending() {
     doc.scroll_viewport_by(0.0, -1000.0);
     assert_eq!(doc.viewport_scroll().y, 90.0);
 }
+
+/// A box with paint containment cuts off what it holds at its clip-margin box, as Chrome
+/// 157 does: a box 10px high holding a child 300px high finds the child at 5 and not at 50,
+/// and one with an `overflow-clip-margin` of 30px at 110 finds its child down to 150.
+#[test]
+fn paint_containment_cuts_what_a_box_holds_at_its_clip_margin() {
+    let (mut doc, _html, body) = blank();
+    let plain = element(
+        &mut doc,
+        body,
+        "div",
+        "contain: paint; width: 100px; height: 10px",
+    );
+    let first = element(&mut doc, plain, "div", "width: 20px; height: 300px");
+    let margin = element(
+        &mut doc,
+        body,
+        "div",
+        "contain: paint; overflow-clip-margin: 30px; width: 100px; height: 10px; \
+         margin-top: 100px",
+    );
+    let second = element(&mut doc, margin, "div", "width: 20px; height: 300px");
+    doc.resolve(0.0);
+    assert_eq!(doc.element_from_point(5.0, 5.0), Some(first));
+    assert_ne!(doc.element_from_point(5.0, 50.0), Some(first));
+    assert_eq!(doc.element_from_point(5.0, 145.0), Some(second));
+    assert_ne!(doc.element_from_point(5.0, 155.0), Some(second));
+}
+
+/// What a scroller 200 by 100 holds after 80px of content, a box 10px high, `(style, inner)`,
+/// with a child 300px high: the bottom of what its descendants reach.
+fn reach_of_a_scroller(scroller_style: &str, style: &str, inner: &str) -> f64 {
+    let (mut doc, _html, body) = blank();
+    let scroller = element(
+        &mut doc,
+        body,
+        "div",
+        &format!("width: 200px; height: 100px; overflow: auto; {scroller_style}"),
+    );
+    element(&mut doc, scroller, "div", "height: 80px");
+    let outer = element(&mut doc, scroller, "div", &format!("height: 10px; {style}"));
+    let holder = match inner.is_empty() {
+        true => outer,
+        false => element(&mut doc, outer, "div", inner),
+    };
+    element(&mut doc, holder, "div", "width: 20px; height: 300px");
+    doc.resolve(0.0);
+    doc.get_node(scroller).unwrap().scrolled_overflow().y1
+}
+
+const CLIP: &str = "width: 50px; height: 10px; overflow: clip; overflow-clip-margin: 100px";
+
+/// What a scroller's descendants reach leaves its own border box out, so content a clip
+/// margin shows down into its bottom border counts: in Chrome 157 a scroller 100px high
+/// with a border of 20px under it scrolls to 110 for a box at 80 with a margin of 20px. A
+/// scroller that holds nothing reaches nothing.
+#[test]
+fn a_scrollers_reach_is_its_descendants_and_not_its_border() {
+    let clip = "width: 50px; overflow: clip; overflow-clip-margin: 20px";
+    assert_eq!(
+        reach_of_a_scroller("border-bottom: 20px solid", clip, ""),
+        110.0
+    );
+    let (mut doc, _html, body) = blank();
+    let empty = element(
+        &mut doc,
+        body,
+        "div",
+        "width: 200px; height: 100px; overflow: auto; border: 5px solid",
+    );
+    doc.resolve(0.0);
+    assert_eq!(doc.get_node(empty).unwrap().scrolled_overflow().y1, 0.0);
+}
+
+/// A box with paint containment and visible overflow cuts what it holds for a scroll range
+/// too: in Chrome 157 a wrapper 10px high at 80 holding a clip margin of 100px scrolls its
+/// scroller no further than the wrapper, 90, and one with a clip margin of 30px of its own
+/// to 120.
+#[test]
+fn paint_containment_cuts_a_scrollers_reach() {
+    assert_eq!(reach_of_a_scroller("", "contain: paint", CLIP), 90.0);
+    assert_eq!(
+        reach_of_a_scroller("", "contain: paint; overflow-clip-margin: 30px", CLIP),
+        120.0
+    );
+}
+
+/// What lies wholly before a scroller's scroll origin is out of its reach on both axes: in
+/// Chrome 157 a clip margin of 100px around a child 20px wide, on a box pulled 100px left of
+/// the scroller, scrolls it no lower, while the same box pulled 40px left does.
+#[test]
+fn what_lies_wholly_left_of_a_scroller_does_not_lengthen_its_reach() {
+    let left = |by: u32| reach_of_a_scroller("", &format!("{CLIP}; margin-left: -{by}px"), "");
+    assert_eq!(left(100), 80.0);
+    assert_eq!(left(40), 190.0);
+}

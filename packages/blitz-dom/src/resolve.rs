@@ -193,8 +193,16 @@ impl BaseDocument {
                 transform *= *t
             }
 
+            let size = node.final_layout().size;
+            let own = Rect::new(
+                0.0,
+                0.0,
+                size.width as f64 * scale,
+                size.height as f64 * scale,
+            );
             let overflow = node.overflow_given_to_parent(*node.scrollable_overflow(), scale);
-            let reached = node.scrolled_overflow_given_to_parent(*node.scrolled_overflow(), scale);
+            let reached =
+                node.scrolled_overflow_given_to_parent(own.union(*node.scrolled_overflow()), scale);
             return (
                 transform.transform_rect_bbox(overflow),
                 transform.transform_rect_bbox(reached),
@@ -207,6 +215,13 @@ impl BaseDocument {
         let h = self.nodes[node_id].final_layout().size.height as f64 * scale;
         let mut overflow = Rect::new(0.0, 0.0, w, h);
         let mut reached = overflow;
+        let reachable = reachable_from(&self.nodes[node_id], scale);
+        let mut held: Option<Rect> = None;
+        let mut hold = |rect: Rect| {
+            if reachable(rect) {
+                held = Some(held.map_or(rect, |held| held.union(rect)));
+            }
+        };
 
         let layout_children = std::mem::take(self.nodes[node_id].layout_children.get_mut());
 
@@ -222,6 +237,7 @@ impl BaseDocument {
                     self.resolve_transforms(child_id, resolve_all);
                 overflow = overflow.union(child_rect_in_self);
                 reached = reached.union(child_reached);
+                hold(child_reached);
             }
         }
         let is_root = self
@@ -240,6 +256,7 @@ impl BaseDocument {
             reached = reached.union(child_reached);
             if !self.nodes[child_id].is_fixed_to_viewport() {
                 scrolled = scrolled.union(child_reached);
+                hold(child_reached);
             }
         }
         *self.nodes[node_id].hoisted_children.borrow_mut() = hoisted_children;
@@ -252,13 +269,14 @@ impl BaseDocument {
             overflow = overflow.union(child_rect_in_self);
             reached = reached.union(child_reached);
             scrolled = scrolled.union(child_reached);
+            hold(child_reached);
         }
 
         if is_root {
             self.root_scrolled_overflow = scrolled;
         }
         *self.nodes[node_id].scrollable_overflow_mut() = overflow;
-        *self.nodes[node_id].scrolled_overflow_mut() = reached;
+        *self.nodes[node_id].scrolled_overflow_mut() = held.unwrap_or(Rect::ZERO);
         *self.nodes[node_id].layout_children.get_mut() = layout_children;
 
         let scaled_x = self.nodes[node_id].final_layout().location.x as f64 * scale;
@@ -499,5 +517,36 @@ impl BaseDocument {
 
         // println!("\n\n");
         // taffy::print_tree(self, root_node_id)
+    }
+}
+
+/// Whether a rectangle in the border box of `node`, in device pixels, holds any of what it
+/// can scroll to: for a scroll container, whether it reaches past the scroll origin on both
+/// axes, the start of its padding box, or its end where the box scrolls the other way. Any
+/// rectangle counts for a box that does not scroll.
+fn reachable_from(node: &crate::Node, scale: f64) -> impl Fn(Rect) -> bool + use<> {
+    let scrolls = node.used_overflow().is_some_and(|(x, y)| {
+        [x, y].iter().any(|overflow| {
+            matches!(
+                overflow,
+                style::values::computed::Overflow::Scroll
+                    | style::values::computed::Overflow::Auto
+                    | style::values::computed::Overflow::Hidden
+            )
+        })
+    });
+    let layout = node.final_layout();
+    let reversed = layout.scrollable_overflow_rect.is_reversed();
+    let (border, size) = (layout.border, layout.size);
+    let at = move |edge: f32| edge as f64 * scale;
+    move |rect: Rect| {
+        !scrolls
+            || (match reversed.x {
+                true => rect.x0 < at(size.width - border.right),
+                false => rect.x1 > at(border.left),
+            } && match reversed.y {
+                true => rect.y0 < at(size.height - border.bottom),
+                false => rect.y1 > at(border.top),
+            })
     }
 }
