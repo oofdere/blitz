@@ -260,3 +260,57 @@ fn a_clip_margin_moves_where_a_clip_cuts() {
     doc.resolve(0.0);
     assert_ne!(doc.element_from_point(55.0, 10.0), Some(child));
 }
+
+/// Content an `overflow-clip-margin` shows past its box, and past the box around that, is
+/// found under a point: the margin counts in the overflow the clipping box gives the boxes
+/// around it, so a hit test goes down to it. In a wrapper 100px in and 50px wide, a box
+/// with a margin of 20px shows its content from 80 to 170, and Chrome 157 finds it from 81
+/// to 169.
+#[test]
+fn content_a_clip_margin_shows_past_the_box_around_it_is_hit() {
+    let (mut doc, _html, body) = blank();
+    let wrapper = element(
+        &mut doc,
+        body,
+        "div",
+        "margin-left: 100px; width: 50px; height: 50px",
+    );
+    let clip = element(
+        &mut doc,
+        wrapper,
+        "div",
+        "overflow: clip; overflow-clip-margin: 20px; width: 50px; height: 50px",
+    );
+    let child = element(
+        &mut doc,
+        clip,
+        "div",
+        "width: 200px; height: 20px; margin-left: -50px",
+    );
+    doc.resolve(0.0);
+    for x in [81.0, 95.0, 155.0, 169.0] {
+        assert_eq!(doc.element_from_point(x, 10.0), Some(child), "at {x}");
+    }
+    for x in [79.0, 171.0] {
+        assert_ne!(doc.element_from_point(x, 10.0), Some(child), "at {x}");
+    }
+}
+
+/// The content an `overflow-clip-margin` shows counts in how far the page scrolls, as in
+/// Chrome 157: a box 10px high at 580, whose margin of 100px shows 100px more of a child
+/// 300px high, makes a page 690px high, which an 800 by 600 viewport scrolls 90px down.
+#[test]
+fn content_a_clip_margin_shows_extends_the_page() {
+    let (mut doc, _html, body) = blank();
+    element(&mut doc, body, "div", "height: 580px");
+    let clip = element(
+        &mut doc,
+        body,
+        "div",
+        "overflow: clip; overflow-clip-margin: 100px; width: 50px; height: 10px",
+    );
+    element(&mut doc, clip, "div", "width: 20px; height: 300px");
+    doc.resolve(0.0);
+    doc.scroll_viewport_by(0.0, -1000.0);
+    assert_eq!(doc.viewport_scroll().y, 90.0);
+}

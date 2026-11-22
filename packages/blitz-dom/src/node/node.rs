@@ -1812,7 +1812,17 @@ impl Node {
     }
 
     /// Whether the point (`x`, `y`), in this box's border box, is outside the edge at which
-    /// it cuts off what it holds, on an axis where its overflow is not visible. A scroll
+    /// it cuts off what it holds ([`Node::overflow_clip_edge`]).
+    pub(crate) fn clips_out(&self, x: f32, y: f32) -> bool {
+        let Some(([left, top, right, bottom], cuts_x, cuts_y)) = self.overflow_clip_edge() else {
+            return false;
+        };
+        (cuts_x && (x < left || x > right)) || (cuts_y && (y < top || y > bottom))
+    }
+
+    /// The edge at which this box cuts off what it holds, as left, top, right and bottom in
+    /// its border box, and whether it cuts on each axis: on an axis where its overflow is not
+    /// visible, and nothing for a box whose overflow is visible on both. A scroll
     /// container (`overflow` of `scroll`, `auto` or `hidden` on either axis) cuts at its
     /// padding box. A box with `overflow: clip` cuts at the box `overflow-clip-margin`
     /// names grown by its length, so a `content-box` clip cuts inside the padding box: this
@@ -1820,13 +1830,11 @@ impl Node {
     /// layer of its own, and for an absolutely positioned child of one that has, but it hits
     /// the in-flow content of a layered box, one that is positioned, transformed or has a
     /// `z-index`, out to the larger of its padding box and its clip-margin box.
-    pub(crate) fn clips_out(&self, x: f32, y: f32) -> bool {
+    pub(crate) fn overflow_clip_edge(&self) -> Option<([f32; 4], bool, bool)> {
         use style::values::generics::box_::OverflowClipMarginBox;
-        let Some((overflow_x, overflow_y)) = self.used_overflow() else {
-            return false;
-        };
+        let (overflow_x, overflow_y) = self.used_overflow()?;
         if overflow_x == Overflow::Visible && overflow_y == Overflow::Visible {
-            return false;
+            return None;
         }
         let layout = self.final_layout();
         let (border, padding, size) = (layout.border, layout.padding, layout.size);
@@ -1842,7 +1850,7 @@ impl Node {
                 Overflow::Scroll | Overflow::Auto | Overflow::Hidden
             )
         };
-        let [left, top, right, bottom] = match self.primary_styles() {
+        let edge = match self.primary_styles() {
             Some(style) if !scrolls(overflow_x) && !scrolls(overflow_y) => {
                 let margin = &style.get_margin().overflow_clip_margin;
                 let [left, top, right, bottom] = match margin.visual_box {
@@ -1860,8 +1868,11 @@ impl Node {
             }
             _ => padding_box,
         };
-        (overflow_x != Overflow::Visible && (x < left || x > right))
-            || (overflow_y != Overflow::Visible && (y < top || y > bottom))
+        Some((
+            edge,
+            overflow_x != Overflow::Visible,
+            overflow_y != Overflow::Visible,
+        ))
     }
 
     /// Find the inline root ancestor of this node (or self if this is an inline root).
@@ -1966,33 +1977,33 @@ impl Node {
     }
 
     /// What of `overflow`, this node's scrollable overflow in device pixels, reaches its
-    /// parent's: on an axis whose `overflow` it uses is not `visible`, it clips its content
-    /// to its border box, and only that reaches it.
+    /// parent's: on an axis whose `overflow` it uses is not `visible`, it cuts its content
+    /// at its overflow clip edge ([`Node::overflow_clip_edge`]), and only that and its own
+    /// border box reach it, so that content an `overflow-clip-margin` shows past the box is
+    /// still found under a point.
     pub(crate) fn overflow_given_to_parent(&self, overflow: KurboRect, scale: f64) -> KurboRect {
-        let (x, y) = self
-            .used_overflow()
-            .unwrap_or((Overflow::Visible, Overflow::Visible));
+        let Some(([left, top, right, bottom], cuts_x, cuts_y)) = self.overflow_clip_edge() else {
+            return overflow;
+        };
         let size = self.final_layout().size;
+        let (width, height) = (size.width as f64 * scale, size.height as f64 * scale);
+        let at = |edge: f32| edge as f64 * scale;
         KurboRect::new(
-            if x == Overflow::Visible {
-                overflow.x0
-            } else {
-                0.0
+            match cuts_x {
+                true => overflow.x0.max(at(left)).min(0.0),
+                false => overflow.x0,
             },
-            if y == Overflow::Visible {
-                overflow.y0
-            } else {
-                0.0
+            match cuts_y {
+                true => overflow.y0.max(at(top)).min(0.0),
+                false => overflow.y0,
             },
-            if x == Overflow::Visible {
-                overflow.x1
-            } else {
-                size.width as f64 * scale
+            match cuts_x {
+                true => overflow.x1.min(at(right)).max(width),
+                false => overflow.x1,
             },
-            if y == Overflow::Visible {
-                overflow.y1
-            } else {
-                size.height as f64 * scale
+            match cuts_y {
+                true => overflow.y1.min(at(bottom)).max(height),
+                false => overflow.y1,
             },
         )
     }
