@@ -273,7 +273,8 @@ impl BaseDocument {
         }
 
         if is_root {
-            self.root_scrolled_overflow = scrolled;
+            self.root_scrolled_overflow =
+                self.nodes[node_id].overflow_given_to_parent(scrolled, scale);
         }
         *self.nodes[node_id].scrollable_overflow_mut() = overflow;
         *self.nodes[node_id].scrolled_overflow_mut() = held.unwrap_or(Rect::ZERO);

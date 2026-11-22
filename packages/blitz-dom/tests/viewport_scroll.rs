@@ -135,3 +135,17 @@ fn what_a_box_clips_adds_nothing() {
         kurbo::Rect::new(0.0, 0.0, 800.0, 2000.0)
     );
 }
+
+/// A root element with paint containment cuts what it holds at its overflow clip edge for
+/// the viewport's scrolling too, as it does for what it paints and what is hit: a child
+/// 1200px tall in a 100px root with `contain: paint` gives the viewport nothing to scroll,
+/// as in Chrome 157, whose `scrollHeight` for that page is the viewport's 600.
+#[test]
+fn a_root_with_paint_containment_cuts_what_the_viewport_scrolls() {
+    let mut doc = page("contain: paint; height: 100px", "height: 1200px");
+    assert_eq!(
+        doc.viewport_scroll_area(),
+        kurbo::Rect::new(0.0, 0.0, 800.0, 600.0)
+    );
+    assert_eq!(range(&mut doc), ((0.0, 0.0), (0.0, 0.0)));
+}
