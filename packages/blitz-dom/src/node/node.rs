@@ -2033,12 +2033,13 @@ impl Node {
         scale: f64,
     ) -> KurboRect {
         use style::values::computed::Contain;
-        let contained = self.primary_styles().is_some_and(|style| {
-            style
-                .get_box()
-                .slow_clone_contain()
-                .contains(Contain::LAYOUT)
-        });
+        let contained = !self.is_non_atomic_inline()
+            && self.primary_styles().is_some_and(|style| {
+                style
+                    .get_box()
+                    .slow_clone_contain()
+                    .contains(Contain::LAYOUT)
+            });
         if !contained {
             return self.overflow_given_to_parent(overflow, scale);
         }

@@ -264,8 +264,9 @@ fn a_clip_margin_moves_where_a_clip_cuts() {
 /// Content an `overflow-clip-margin` shows past its box, and past the box around that, is
 /// found under a point: the margin counts in the overflow the clipping box gives the boxes
 /// around it, so a hit test goes down to it. In a wrapper 100px in and 50px wide, a box
-/// with a margin of 20px shows its content from 80 to 170. Chrome 157 finds it from 80 up
-/// to 170, and this at 170 too, as its clip edges are closed.
+/// with a margin of 20px shows its content from 80 to 170. Chrome 157 finds it from 80 and
+/// stops short of 170, at 169.99, while this finds it at 170 too, as its clip edges are
+/// closed.
 #[test]
 fn content_a_clip_margin_shows_past_the_box_around_it_is_hit() {
     let (mut doc, _html, body) = blank();
@@ -344,4 +345,24 @@ fn content_a_clip_margin_shows_past_layout_containment_does_not_extend_the_page(
         doc.scroll_viewport_by(0.0, -1000.0);
         assert_eq!(doc.viewport_scroll().y, 0.0, "{clip_style}{wrapper_style}");
     }
+}
+
+/// Layout containment does not apply to a plain inline box, so a `span` with
+/// `contain: layout` around a block lets the page scroll for content a clip margin
+/// inside shows, as Chrome 157 does: the page reaches 690px and scrolls by 90.
+#[test]
+fn layout_containment_on_a_plain_inline_does_not_stop_the_page_extending() {
+    let (mut doc, _html, body) = blank();
+    element(&mut doc, body, "div", "height: 580px");
+    let span = element(&mut doc, body, "span", "contain: layout");
+    let clip = element(
+        &mut doc,
+        span,
+        "div",
+        "overflow: clip; overflow-clip-margin: 100px; width: 50px; height: 10px",
+    );
+    element(&mut doc, clip, "div", "width: 20px; height: 300px");
+    doc.resolve(0.0);
+    doc.scroll_viewport_by(0.0, -1000.0);
+    assert_eq!(doc.viewport_scroll().y, 90.0);
 }
