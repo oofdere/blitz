@@ -1219,6 +1219,9 @@ impl Node {
             if el.is_button_input() {
                 flags |= stylo_taffy::StyleFlags::IS_BUTTON_INPUT;
             }
+            if el.is_toggle_input() {
+                flags |= stylo_taffy::StyleFlags::IS_TOGGLE;
+            }
             if let Some(inline_layout) = el.inline_layout_data.as_deref() {
                 flags |= inline_layout.span_cb_flags;
             }

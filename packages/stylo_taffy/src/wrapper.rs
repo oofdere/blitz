@@ -37,6 +37,11 @@ bitflags! {
         /// Whether the node is the body whose `overflow` the viewport takes: its own is
         /// `visible`
         const OVERFLOW_TO_VIEWPORT = 1 << 5;
+        /// Whether the node is a checkbox or a radio button, whose auto width resolves to its
+        /// own size in block layout, as a compressible replaced element's does, while flex and
+        /// grid layout still stretch it. With its native appearance it has no padding and no
+        /// border, as browsers' themes give it ([`TaffyStyloStyle::is_native_toggle`])
+        const IS_TOGGLE = 1 << 6;
     }
 }
 
@@ -68,6 +73,14 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
+    /// Whether the node is a checkbox or a radio button ([`StyleFlags::IS_TOGGLE`]) drawn with
+    /// its native appearance, whose `appearance` is not `none`.
+    #[inline]
+    pub fn is_native_toggle(&self) -> bool {
+        self.flags.contains(StyleFlags::IS_TOGGLE)
+            && self.style.get_box().appearance != style::values::computed::Appearance::None
+    }
+
     /// The display used for contents layout, including button-input fixups.
     #[inline]
     pub fn effective_display(&self) -> stylo::Display {
@@ -179,6 +192,11 @@ impl<T: Deref<Target = ComputedValues>> From<TaffyStyloStyle<T>> for taffy::Styl
         let mut style = convert::to_taffy_style(&value.style);
         value.layout_wm().transpose_style(&mut style);
         style.item_is_replaced = value.flags.contains(StyleFlags::IS_REPLACED);
+        style.item_is_compressible_replaced = value.flags.contains(StyleFlags::IS_TOGGLE);
+        if value.is_native_toggle() {
+            style.padding = taffy::Rect::zero();
+            style.border = taffy::Rect::zero();
+        }
         if value.flags.contains(StyleFlags::OVERFLOW_TO_VIEWPORT) {
             style.overflow = taffy::Point {
                 x: taffy::Overflow::Visible,
@@ -207,7 +225,8 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn is_compressible_replaced(&self) -> bool {
-        self.flags.contains(StyleFlags::IS_REPLACED)
+        self.flags
+            .intersects(StyleFlags::IS_REPLACED | StyleFlags::IS_TOGGLE)
     }
 
     #[inline]
@@ -316,6 +335,9 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        if self.is_native_toggle() {
+            return taffy::Rect::zero();
+        }
         let padding_styles = self.style.get_padding();
         if let Some(basis) = self.percent_basis() {
             let resolve = |value: &stylo::LengthPercentage| {
@@ -341,6 +363,9 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn border(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        if self.is_native_toggle() {
+            return taffy::Rect::zero();
+        }
         let border_styles = self.style.get_border();
         self.rect(taffy::Rect {
             left: convert::border(

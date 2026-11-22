@@ -876,6 +876,15 @@ impl ElementData {
             )
     }
 
+    /// Whether this is a checkbox or a radio button, its `type` read without
+    /// regard to ASCII case.
+    pub(crate) fn is_toggle_input(&self) -> bool {
+        self.name.local == local_name!("input")
+            && self.attr(local_name!("type")).is_some_and(|kind| {
+                kind.eq_ignore_ascii_case("checkbox") || kind.eq_ignore_ascii_case("radio")
+            })
+    }
+
     pub fn is_submit_button(&self) -> bool {
         if self.name.local != local_name!("button") {
             return false;

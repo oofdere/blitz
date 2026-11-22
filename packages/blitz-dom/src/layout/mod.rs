@@ -11,7 +11,6 @@ use std::cell::Ref;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use style::Atom;
-use style::values::computed::Appearance;
 use style::values::computed::CSSPixelLength;
 use style::values::computed::length_percentage::CalcLengthPercentage;
 use stylo_taffy::CopyStyleGetters;
@@ -346,24 +345,22 @@ impl LayoutPassState<'_> {
                             if kind.eq_ignore_ascii_case("checkbox")
                                 || kind.eq_ignore_ascii_case("radio") =>
                         {
-                            // A native checkbox or radio button whose width or height is
-                            // auto is 13px that way, border box, as Chrome's theme makes it;
-                            // with `appearance: none` it has no size of its own.
-                            let native = node.primary_styles().is_some_and(|styles| {
-                                styles.get_box().appearance != Appearance::None
-                            });
+                            // A native checkbox or radio button is 13px square, as Chrome's
+                            // theme makes it, with no padding or border
+                            // (`is_native_toggle`); with `appearance: none` it has no size of
+                            // its own.
                             let style = node.layout_style();
-                            let width = inputs.parent_size.width;
-                            let pb = style.padding().resolve_or_zero(width, resolve_calc_value)
-                                + style.border().resolve_or_zero(width, resolve_calc_value);
-                            let side = if native { 13.0 } else { 0.0 };
+                            let side = match style.is_native_toggle() {
+                                true => 13.0,
+                                false => 0.0,
+                            };
                             return compute_leaf_layout(
                                 inputs,
                                 &style,
                                 resolve_calc_value,
                                 |_known_size, _available_space| taffy::Size {
-                                    width: (side - pb.horizontal_axis_sum()).max(0.0),
-                                    height: (side - pb.vertical_axis_sum()).max(0.0),
+                                    width: side,
+                                    height: side,
                                 },
                             );
                         }
