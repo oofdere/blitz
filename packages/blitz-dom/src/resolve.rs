@@ -169,9 +169,12 @@ impl BaseDocument {
         timer.print_times(&format!("Resolve({}): ", self.id()));
     }
 
-    fn resolve_transforms(&mut self, node_id: NodeId, resolve_all: bool) -> Rect {
+    /// Resolves the transforms of `node_id` and of what it holds, and gives the overflow it
+    /// gives its parent, in its parent's space: all of it, which hit tests are bounded by,
+    /// and the part that counts in a scroll range (`Node::scrolled_overflow_given_to_parent`).
+    fn resolve_transforms(&mut self, node_id: NodeId, resolve_all: bool) -> (Rect, Rect) {
         if !self.nodes.contains_key(node_id) {
-            return Rect::ZERO;
+            return (Rect::ZERO, Rect::ZERO);
         }
 
         let scale = self.viewport.scale_f64();
@@ -191,7 +194,11 @@ impl BaseDocument {
             }
 
             let overflow = node.overflow_given_to_parent(*node.scrollable_overflow(), scale);
-            return transform.transform_rect_bbox(overflow);
+            let reached = node.scrolled_overflow_given_to_parent(*node.scrolled_overflow(), scale);
+            return (
+                transform.transform_rect_bbox(overflow),
+                transform.transform_rect_bbox(reached),
+            );
         }
 
         let transform = self.nodes[node_id].set_transform(scale as f32);
@@ -199,6 +206,7 @@ impl BaseDocument {
         let w = self.nodes[node_id].final_layout().size.width as f64 * scale;
         let h = self.nodes[node_id].final_layout().size.height as f64 * scale;
         let mut overflow = Rect::new(0.0, 0.0, w, h);
+        let mut reached = overflow;
 
         let layout_children = std::mem::take(self.nodes[node_id].layout_children.get_mut());
 
@@ -210,24 +218,28 @@ impl BaseDocument {
                 if self.nodes[child_id].is_out_of_flow() {
                     continue;
                 }
-                let child_rect_in_self = self.resolve_transforms(child_id, resolve_all);
+                let (child_rect_in_self, child_reached) =
+                    self.resolve_transforms(child_id, resolve_all);
                 overflow = overflow.union(child_rect_in_self);
+                reached = reached.union(child_reached);
             }
         }
         let is_root = self
             .try_root_element()
             .is_some_and(|root| root.id == node_id);
-        let mut scrolled = overflow;
+        let mut scrolled = reached;
         let hoisted_children =
             std::mem::take(&mut *self.nodes[node_id].hoisted_children.borrow_mut());
         for &child_id in &hoisted_children {
             if !self.nodes.contains_key(child_id) {
                 continue;
             }
-            let child_rect_in_self = self.resolve_transforms(child_id, resolve_all);
+            let (child_rect_in_self, child_reached) =
+                self.resolve_transforms(child_id, resolve_all);
             overflow = overflow.union(child_rect_in_self);
+            reached = reached.union(child_reached);
             if !self.nodes[child_id].is_fixed_to_viewport() {
-                scrolled = scrolled.union(child_rect_in_self);
+                scrolled = scrolled.union(child_reached);
             }
         }
         *self.nodes[node_id].hoisted_children.borrow_mut() = hoisted_children;
@@ -236,15 +248,17 @@ impl BaseDocument {
             if self.nodes[pseudo].is_out_of_flow() {
                 continue;
             }
-            let child_rect_in_self = self.resolve_transforms(pseudo, resolve_all);
+            let (child_rect_in_self, child_reached) = self.resolve_transforms(pseudo, resolve_all);
             overflow = overflow.union(child_rect_in_self);
-            scrolled = scrolled.union(child_rect_in_self);
+            reached = reached.union(child_reached);
+            scrolled = scrolled.union(child_reached);
         }
 
         if is_root {
             self.root_scrolled_overflow = scrolled;
         }
         *self.nodes[node_id].scrollable_overflow_mut() = overflow;
+        *self.nodes[node_id].scrolled_overflow_mut() = reached;
         *self.nodes[node_id].layout_children.get_mut() = layout_children;
 
         let scaled_x = self.nodes[node_id].final_layout().location.x as f64 * scale;
@@ -256,7 +270,11 @@ impl BaseDocument {
             Affine::translate((scaled_x, scaled_y))
         };
 
-        full.transform_rect_bbox(self.nodes[node_id].overflow_given_to_parent(overflow, scale))
+        let node = &self.nodes[node_id];
+        (
+            full.transform_rect_bbox(node.overflow_given_to_parent(overflow, scale)),
+            full.transform_rect_bbox(node.scrolled_overflow_given_to_parent(reached, scale)),
+        )
     }
 
     /// Ensure that the layout_children field is populated for all nodes

@@ -264,8 +264,8 @@ fn a_clip_margin_moves_where_a_clip_cuts() {
 /// Content an `overflow-clip-margin` shows past its box, and past the box around that, is
 /// found under a point: the margin counts in the overflow the clipping box gives the boxes
 /// around it, so a hit test goes down to it. In a wrapper 100px in and 50px wide, a box
-/// with a margin of 20px shows its content from 80 to 170, and Chrome 157 finds it from 81
-/// to 169.
+/// with a margin of 20px shows its content from 80 to 170. Chrome 157 finds it from 80 up
+/// to 170, and this at 170 too, as its clip edges are closed.
 #[test]
 fn content_a_clip_margin_shows_past_the_box_around_it_is_hit() {
     let (mut doc, _html, body) = blank();
@@ -313,4 +313,35 @@ fn content_a_clip_margin_shows_extends_the_page() {
     doc.resolve(0.0);
     doc.scroll_viewport_by(0.0, -1000.0);
     assert_eq!(doc.viewport_scroll().y, 90.0);
+}
+
+/// Layout containment makes what a box holds past its border box ink overflow, which the
+/// page does not scroll for, though it is still found under a point: Chrome 157 does not
+/// scroll a page 590px high further for content a clip margin of 100px shows, whether the
+/// clipping box or a box around it has `contain: layout`, and still finds it.
+#[test]
+fn content_a_clip_margin_shows_past_layout_containment_does_not_extend_the_page() {
+    for (clip_style, wrapper_style) in [("contain: layout", ""), ("", "contain: layout")] {
+        let (mut doc, _html, body) = blank();
+        element(&mut doc, body, "div", "height: 580px");
+        let wrapper = element(&mut doc, body, "div", wrapper_style);
+        let clip = element(
+            &mut doc,
+            wrapper,
+            "div",
+            &format!(
+                "overflow: clip; overflow-clip-margin: 100px; width: 50px; height: 10px; \
+                 {clip_style}"
+            ),
+        );
+        let child = element(&mut doc, clip, "div", "width: 20px; height: 300px");
+        doc.resolve(0.0);
+        assert_eq!(
+            doc.element_from_point(5.0, 595.0),
+            Some(child),
+            "{clip_style}{wrapper_style}"
+        );
+        doc.scroll_viewport_by(0.0, -1000.0);
+        assert_eq!(doc.viewport_scroll().y, 0.0, "{clip_style}{wrapper_style}");
+    }
 }

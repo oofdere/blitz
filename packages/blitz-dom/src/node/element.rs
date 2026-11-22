@@ -156,6 +156,9 @@ pub struct LayoutData {
     pub final_layout: Layout,
     pub scroll_offset: crate::Point<f64>,
     pub scrollable_overflow: KurboRect,
+    /// The part of `scrollable_overflow` that counts in a scroll range: all of it but what
+    /// a box with layout containment holds past its border box, which is ink overflow.
+    pub scrolled_overflow: KurboRect,
     /// The writing mode this node's layout algorithm ran in (the root takes it from `<body>`),
     /// recorded by the layout pass for CSSOM geometry lookups.
     #[cfg(feature = "writing-mode")]
@@ -175,6 +178,7 @@ impl LayoutData {
             final_layout: Layout::new(),
             scroll_offset: crate::Point::ZERO,
             scrollable_overflow: KurboRect::ZERO,
+            scrolled_overflow: KurboRect::ZERO,
             #[cfg(feature = "writing-mode")]
             writing_mode: stylo_taffy::WritingMode::empty(),
             #[cfg(feature = "writing-mode")]

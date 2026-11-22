@@ -315,6 +315,19 @@ impl Node {
         &mut self.layout_data_mut().scrollable_overflow
     }
 
+    /// The part of [`Node::scrollable_overflow`] that counts in a scroll range, in device
+    /// pixels in this node's border box: all of it but what a box with layout containment
+    /// holds past its border box, and cut at each overflow clip edge as a parent gets it.
+    #[inline]
+    pub fn scrolled_overflow(&self) -> &KurboRect {
+        &self.layout_data().scrolled_overflow
+    }
+
+    #[inline]
+    pub(crate) fn scrolled_overflow_mut(&mut self) -> &mut KurboRect {
+        &mut self.layout_data_mut().scrolled_overflow
+    }
+
     /// Style data from stylo, if this node kind carries it (element or document
     /// nodes). Returns `None` for text/comment nodes.
     #[inline]
@@ -2005,6 +2018,36 @@ impl Node {
                 true => overflow.y1.min(at(bottom)).max(height),
                 false => overflow.y1,
             },
+        )
+    }
+
+    /// What of `overflow`, the part of this node's scrollable overflow that counts in a
+    /// scroll range, in device pixels, reaches its parent's: only its border box when it has
+    /// layout containment, which makes what it holds ink overflow (CSS Containment 2,
+    /// section 3.2), and otherwise what [`Node::overflow_given_to_parent`] gives. Chrome 157
+    /// scrolls no further for content a clip margin shows past a box with `contain: layout`,
+    /// or past one inside it, though it still finds that content under a point.
+    pub(crate) fn scrolled_overflow_given_to_parent(
+        &self,
+        overflow: KurboRect,
+        scale: f64,
+    ) -> KurboRect {
+        use style::values::computed::Contain;
+        let contained = self.primary_styles().is_some_and(|style| {
+            style
+                .get_box()
+                .slow_clone_contain()
+                .contains(Contain::LAYOUT)
+        });
+        if !contained {
+            return self.overflow_given_to_parent(overflow, scale);
+        }
+        let size = self.final_layout().size;
+        KurboRect::new(
+            0.0,
+            0.0,
+            size.width as f64 * scale,
+            size.height as f64 * scale,
         )
     }
 
