@@ -147,10 +147,11 @@ impl Edges {
     }
 }
 
-/// The characters white space of this kind collapses.
+/// The characters white space of this kind collapses, as Parley collapses them: in `Collapse`,
+/// a form feed too.
 pub(crate) fn collapsible(collapse: WhiteSpaceCollapse) -> &'static [char] {
     match collapse {
-        WhiteSpaceCollapse::Collapse => &[' ', '\t', '\n', '\r'],
+        WhiteSpaceCollapse::Collapse => &[' ', '\t', '\n', '\u{c}', '\r'],
         WhiteSpaceCollapse::PreserveBreaks => &[' ', '\t'],
         _ => &[],
     }

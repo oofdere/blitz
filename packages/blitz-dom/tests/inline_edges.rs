@@ -400,3 +400,14 @@ fn white_space_after_the_last_text_goes_too() {
     let bare = built(|doc, div| vec![element(doc, div, "span", padded, "aaa")]);
     assert_eq!(spaced, bare, "in display: contents");
 }
+
+/// A form feed is white space that collapses, as Parley collapses it, so at the start and the
+/// end of a line it goes inside the edges as a space does, and between words it is one space.
+#[test]
+fn a_form_feed_at_the_edges_goes_as_a_space_does() {
+    let style = "padding: 0 7px";
+    assert_eq!(
+        ends(style, false, ["\u{c}aaa\u{c}", "\u{c}bbb\u{c}"]),
+        ends(style, false, ["aaa ", "bbb"])
+    );
+}

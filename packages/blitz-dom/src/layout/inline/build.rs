@@ -99,6 +99,28 @@ pub(crate) fn build_inline_layout_into(
         );
     }
     for child_id in root_node.children.iter().copied() {
+        // Text lifted out of a `display: contents` element into this anonymous block keeps
+        // that element's white space, as text takes its parent's style.
+        let child = &nodes[child_id];
+        let lifted = match child.data {
+            NodeData::Text(_) if child.parent != Some(inline_context_root_node_id) => child
+                .parent
+                .and_then(|parent| nodes[parent].primary_styles()),
+            _ => None,
+        };
+        let whitespace = lifted.map(|s| {
+            [
+                parley::StyleProperty::WhiteSpaceCollapse(stylo_to_parley::white_space_collapse(
+                    s.clone_white_space_collapse(),
+                )),
+                parley::StyleProperty::TextWrapMode(stylo_to_parley::text_wrap_mode(
+                    s.clone_text_wrap_mode(),
+                )),
+            ]
+        });
+        if let Some(styles) = &whitespace {
+            builder.push_style_modification_span(styles);
+        }
         build_inline_layout_recursive(
             &mut builder,
             &mut text_transformer,
@@ -106,6 +128,9 @@ pub(crate) fn build_inline_layout_into(
             child_id,
             &text_transform,
         );
+        if whitespace.is_some() {
+            builder.pop_style_span();
+        }
     }
     if let Some(after_id) = root_node.after() {
         build_inline_layout_recursive(
