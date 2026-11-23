@@ -411,3 +411,37 @@ fn a_form_feed_at_the_edges_goes_as_a_space_does() {
         ends(style, false, ["aaa ", "bbb"])
     );
 }
+
+/// White space after an element's end edges goes only after white space before them that
+/// collapses too, as CSS Text 3 (4.1.1) removes a collapsible space only after another
+/// collapsible one. After a span `"label "` with 4px of padding at its end, Chrome 157 draws
+/// `" abc"` with its space in a `pre-wrap` block, though `" abc"` itself collapses (`a` at
+/// 144 in 20px Ahem), and without it where the block collapses too (`a` at 124).
+#[test]
+fn white_space_after_the_edges_goes_only_after_white_space_that_collapses() {
+    let line = |block: &str, second: &str, words: [&str; 2]| {
+        built(|doc, div| {
+            let inner = element(doc, div, "div", block, "");
+            let first = element(doc, inner, "span", "padding-right: 4px", words[0]);
+            let second = element(doc, inner, "span", second, words[1]);
+            vec![first, second]
+        })
+    };
+    let (pre, normal) = ("white-space: pre-wrap", "white-space: normal");
+    let kept = line(pre, normal, ["label ", " abc"]);
+    assert_eq!(
+        kept,
+        line(pre, pre, ["label ", " abc"]),
+        "after a pre-wrap space"
+    );
+    assert_ne!(
+        kept,
+        line(pre, normal, ["label ", "abc"]),
+        "after a pre-wrap space"
+    );
+    assert_eq!(
+        line(normal, normal, ["label ", " abc"]),
+        line(normal, normal, ["label ", "abc"]),
+        "after a space that collapses"
+    );
+}

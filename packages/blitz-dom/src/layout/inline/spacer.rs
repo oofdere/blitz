@@ -86,7 +86,7 @@ fn width(node: &Node, end: bool, margin: bool, basis: Option<f32>) -> f32 {
 /// only where nothing stands between them and the line's edge.
 #[derive(Default)]
 pub(crate) struct Edges {
-    /// Whether white space came before the spacers just pushed, or nothing did.
+    /// Whether white space that collapses came before the spacers just pushed, or nothing did.
     after_space: bool,
     /// Whether end spacers were just pushed, which the next text is joined to unless it starts
     /// with white space.
@@ -249,18 +249,21 @@ pub(crate) fn end_outside(
 }
 
 impl Edges {
-    /// Notes whether white space comes before the spacers about to be pushed, and joins them to
-    /// what comes before if none does.
+    /// Notes whether white space that collapses comes before the spacers about to be pushed, and
+    /// joins them to what comes before if no white space does. White space that does not
+    /// collapse, such as a `pre-wrap` space, lets a line break there but collapses nothing after
+    /// the spacers, as CSS Text 3 (4.1.1) removes a collapsible space only after another
+    /// collapsible one; a kept line break is the start of a line, after which it goes.
     fn boundary(&mut self, builder: &mut TreeBuilder<TextBrush>, end: bool) {
         let text = builder.text();
-        let space_before = text.is_empty()
+        let collapses_before = text.is_empty()
             || builder.has_pending_whitespace()
-            || text.ends_with(char::is_whitespace)
+            || text.ends_with(['\n', '\r', '\u{2028}', '\u{2029}'])
             || (self.after_space && text.ends_with(['\u{FFFC}', '\u{2060}']));
-        if !space_before && !text.is_empty() {
+        if !collapses_before && !text.is_empty() && !text.ends_with(char::is_whitespace) {
             builder.push_text(WORD_JOINER);
         }
-        self.after_space = space_before;
+        self.after_space = collapses_before;
         self.join_next = end;
     }
 }
