@@ -62,6 +62,15 @@ fn a_text_fields_normal_line_is_as_high_as_its_fonts_metrics_give() {
                 create(
                     &mut doc,
                     body,
+                    "input",
+                    &[("style", &font), ("value", "\u{644}")],
+                ),
+                1.0,
+            ),
+            (
+                create(
+                    &mut doc,
+                    body,
                     "textarea",
                     &[("style", &font), ("rows", "1")],
                 ),

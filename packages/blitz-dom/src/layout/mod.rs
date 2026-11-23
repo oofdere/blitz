@@ -156,10 +156,12 @@ impl DerefMut for LayoutPassState<'_> {
 }
 
 impl LayoutPassState<'_> {
-    /// The height of a line of a text field's text when its `line-height` is `normal`: what its
-    /// font's metrics give, as for a line of any other text (CSS Inline 3, section 4.1), so the
-    /// height the field's editor gives its first line. Chrome sizes an `input`'s content box and
-    /// each row of a `textarea`'s so. None for any other node or `line-height`.
+    /// The height of a line of a text field's text when its `line-height` is `normal`: what the
+    /// metrics of its primary font, the first of its families there is, give, as for a line of any
+    /// other text (CSS Inline 3, section 4.1), so the line the field's editor lays out with no
+    /// text. Chrome sizes an `input`'s content box and each row of a `textarea`'s so, from the
+    /// primary font alone: a taller font that its value falls back to does not grow it. None for
+    /// any other node or `line-height`.
     fn field_line_height(&mut self, id: crate::NodeId) -> Option<f32> {
         use style::values::computed::font::LineHeight;
 
@@ -173,10 +175,16 @@ impl LayoutPassState<'_> {
             return None;
         }
         let input = node.data.downcast_element_mut()?.text_input_data_mut()?;
-        input
-            .editor
-            .refresh_layout(&mut doc.font_ctx.lock().unwrap(), &mut doc.layout_ctx);
-        let line = input.editor.try_layout()?.lines().next()?;
+        let mut font_ctx = doc.font_ctx.lock().unwrap();
+        let mut builder = doc
+            .layout_ctx
+            .ranged_builder(&mut font_ctx, "", scale, true);
+        for style in input.editor.edit_styles().inner().values() {
+            builder.push_default(style.clone());
+        }
+        let mut layout = builder.build("");
+        layout.break_all_lines(None);
+        let line = layout.lines().next()?;
         Some(line.metrics().line_height / scale)
     }
 
