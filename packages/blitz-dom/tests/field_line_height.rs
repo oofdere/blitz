@@ -102,3 +102,43 @@ fn a_text_fields_normal_line_is_as_high_as_its_fonts_metrics_give() {
         }
     }
 }
+
+/// A text field beside text in a line sits on its text's baseline, as an
+/// inline block of the same text and font does and as Chrome 157 aligns it,
+/// so the line is as high as either. Before, measuring the field's line left
+/// its editor to lay out again, so the field gave no baseline, the line put
+/// its bottom edge there, and the text beside it hung below.
+#[test]
+fn a_text_field_beside_text_sits_on_its_baseline() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let style = (
+        "style",
+        "display: inline-block; width: 100px; font: 40px Bullet",
+    );
+    let mut lines = Vec::new();
+    for (name, attributes) in [
+        ("input", vec![style, ("value", "\u{2022}")]),
+        ("div", vec![style]),
+    ] {
+        let line = create(&mut doc, body, "div", &[("style", "font: 20px Bullet")]);
+        let span = create(&mut doc, line, "span", &[]);
+        let text = doc.mutate().create_text_node("\u{2022}");
+        doc.mutate().append_children(span, &[text]);
+        let beside = create(&mut doc, line, name, &attributes);
+        if name == "div" {
+            let text = doc.mutate().create_text_node("\u{2022}");
+            doc.mutate().append_children(beside, &[text]);
+        }
+        lines.push(line);
+    }
+    doc.resolve(0.0);
+    let height = |id: NodeId| doc.get_client_bounding_rect(id).unwrap().height;
+    assert_eq!(height(lines[0]), height(lines[1]));
+}

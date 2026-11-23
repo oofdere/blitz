@@ -161,7 +161,8 @@ impl LayoutPassState<'_> {
     /// other text (CSS Inline 3, section 4.1), so the line the field's editor lays out with no
     /// text. Chrome sizes an `input`'s content box and each row of a `textarea`'s so, from the
     /// primary font alone: a taller font that its value falls back to does not grow it. None for
-    /// any other node or `line-height`.
+    /// any other node or `line-height`. It reads the editor's styles without marking its layout
+    /// to be done again, so the field keeps the baseline of its laid-out text.
     fn field_line_height(&mut self, id: crate::NodeId) -> Option<f32> {
         use style::values::computed::font::LineHeight;
 
@@ -179,7 +180,7 @@ impl LayoutPassState<'_> {
         let mut builder = doc
             .layout_ctx
             .ranged_builder(&mut font_ctx, "", scale, true);
-        for style in input.editor.edit_styles().inner().values() {
+        for style in input.editor.get_styles().inner().values() {
             builder.push_default(style.clone());
         }
         let mut layout = builder.build("");
