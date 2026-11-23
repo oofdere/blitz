@@ -156,6 +156,30 @@ impl DerefMut for LayoutPassState<'_> {
 }
 
 impl LayoutPassState<'_> {
+    /// The height of a line of a text field's text when its `line-height` is `normal`: what its
+    /// font's metrics give, as for a line of any other text (CSS Inline 3, section 4.1), so the
+    /// height the field's editor gives its first line. Chrome sizes an `input`'s content box and
+    /// each row of a `textarea`'s so. None for any other node or `line-height`.
+    fn field_line_height(&mut self, id: crate::NodeId) -> Option<f32> {
+        use style::values::computed::font::LineHeight;
+
+        let doc = &mut *self.doc;
+        let scale = doc.viewport.scale();
+        let node = &mut doc.nodes[id];
+        let normal = node
+            .primary_styles()
+            .is_some_and(|style| matches!(style.clone_line_height(), LineHeight::Normal));
+        if !normal {
+            return None;
+        }
+        let input = node.data.downcast_element_mut()?.text_input_data_mut()?;
+        input
+            .editor
+            .refresh_layout(&mut doc.font_ctx.lock().unwrap(), &mut doc.layout_ctx);
+        let line = input.editor.try_layout()?.lines().next()?;
+        Some(line.metrics().line_height / scale)
+    }
+
     fn node_from_id(&self, node_id: taffy::prelude::NodeId) -> &Node {
         &self.nodes[dom_node_id(node_id)]
     }
@@ -232,6 +256,7 @@ impl LayoutPassState<'_> {
         block_ctx: Option<&mut BlockContext<'_>>,
     ) -> taffy::tree::LayoutOutput {
         let orthogonal_percent_basis = self.orthogonal_percent_basis_of(dom_node_id(node_id));
+        let field_line_height = self.field_line_height(dom_node_id(node_id));
         let node = &mut self.nodes[dom_node_id(node_id)];
 
         let font_styles = node.primary_styles().map(|style| {
@@ -247,7 +272,7 @@ impl LayoutPassState<'_> {
             (font_size, line_height)
         });
         let font_size = font_styles.map(|s| s.0);
-        let resolved_line_height = font_styles.map(|s| s.1);
+        let resolved_line_height = field_line_height.or(font_styles.map(|s| s.1));
 
         match &mut node.data {
             NodeData::Text(data) => {
