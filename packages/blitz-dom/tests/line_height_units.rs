@@ -1,6 +1,6 @@
 //! A line's height is kept in Chrome's layout unit, 1/64 of a pixel, so ten
 //! lines are as high as Chrome 157 makes them: a `line-height` length or
-//! percentage rounds to the nearest 1/64, and a number floors the font size to
+//! percentage rounds to the nearest 1/64, and a number rounds the font size to
 //! 1/64 and then floors the product. Before, each line kept its height
 //! unrounded, so ten lines of `line-height: 1.3` at 14px were 182px where
 //! Chrome's are 181.875, and the difference grows with every line.
@@ -37,6 +37,7 @@ fn ten_lines_are_as_high_as_chromes_layout_unit_makes_them() {
         ("font-size: 14px; line-height: 18.2px", 182.03125),
         ("font-size: 14px; line-height: 1.3", 181.875),
         ("font-size: 13.3333px; line-height: 1.3", 173.125),
+        ("font-size: 14.4px; line-height: 1.5", 216.09375),
         ("font-size: 14px; line-height: 130%", 182.03125),
         ("font-size: 14px; line-height: 1.3em", 182.03125),
         ("font-size: 14px; line-height: 18.24px", 182.34375),
