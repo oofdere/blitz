@@ -437,6 +437,22 @@ pub(crate) fn vertical_align(style: &stylo::ComputedValues) -> parley::VerticalA
     parley::VerticalAlign::new(alignment, shift)
 }
 
+/// The height of a line of `line_height` at `font_size`, or nothing for
+/// `normal`, which the font's metrics decide. It is kept in Chrome's layout
+/// unit, 1/64 of a pixel, so that many lines add up as Chrome's do: a length
+/// (a percentage is one by now) rounds to it, and a number takes the font size
+/// rounded to it and floors the product.
+pub(crate) fn line_height_px(line_height: &stylo::LineHeight, font_size: f32) -> Option<f32> {
+    match line_height {
+        stylo::LineHeight::Normal => None,
+        stylo::LineHeight::Number(num) => {
+            let font_size = (font_size * 64.0).round() / 64.0;
+            Some((font_size * num.0 * 64.0).floor() / 64.0)
+        }
+        stylo::LineHeight::Length(value) => Some((value.0.px() * 64.0).round() / 64.0),
+    }
+}
+
 pub(crate) fn style(
     span_id: NodeId,
     style: &stylo::ComputedValues,
@@ -446,20 +462,8 @@ pub(crate) fn style(
 
     // Convert font size and line height
     let font_size = font_styles.font_size.used_size.0.px();
-    // A line's height is kept in Chrome's layout unit, 1/64 of a pixel, so
-    // that many lines add up as Chrome's do: a length (a percentage is one by
-    // now) rounds to it, and a number takes the font size rounded to it and
-    // floors the product.
-    let line_height = match font_styles.line_height {
-        stylo::LineHeight::Normal => parley::LineHeight::NORMAL,
-        stylo::LineHeight::Number(num) => {
-            let font_size = (font_size * 64.0).round() / 64.0;
-            parley::LineHeight::Absolute((font_size * num.0 * 64.0).floor() / 64.0)
-        }
-        stylo::LineHeight::Length(value) => {
-            parley::LineHeight::Absolute((value.0.px() * 64.0).round() / 64.0)
-        }
-    };
+    let line_height = line_height_px(&font_styles.line_height, font_size)
+        .map_or(parley::LineHeight::NORMAL, parley::LineHeight::Absolute);
     let vertical_align = self::vertical_align(style);
 
     let letter_spacing = itext_styles

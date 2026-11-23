@@ -142,3 +142,89 @@ fn a_text_field_beside_text_sits_on_its_baseline() {
     let height = |id: NodeId| doc.get_client_bounding_rect(id).unwrap().height;
     assert_eq!(height(lines[0]), height(lines[1]));
 }
+
+/// A text field's line that is not `normal` is kept in Chrome's layout unit,
+/// 1/64 of a pixel, as a line of text is, so a field is as high as the text it
+/// takes the place of: 28.796875 at 24px and 1.2, where the plain product is
+/// 28.8, so five such `input`s are 143.984375 high and not 144. A `textarea`
+/// of 10 rows at 14px and 1.3 is 181.875 high and one of 3 rows at 14.4px and
+/// 1.5 is 64.828125, and an `input` at `18.2px` is 18.203125, as Chrome 157
+/// has them.
+#[test]
+fn a_text_fields_line_is_kept_in_chromes_layout_unit() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let line = create(
+        &mut doc,
+        body,
+        "div",
+        &[("style", "font-size: 24px; line-height: 1.2")],
+    );
+    let text = doc.mutate().create_text_node("x");
+    doc.mutate().append_children(line, &[text]);
+    let stack = create(&mut doc, body, "div", &[]);
+    for _ in 0..5 {
+        create(
+            &mut doc,
+            stack,
+            "input",
+            &[
+                ("style", "font-size: 24px; line-height: 1.2"),
+                ("value", "x"),
+            ],
+        );
+    }
+    let after = create(&mut doc, stack, "div", &[]);
+    let cases = [
+        (
+            create(
+                &mut doc,
+                body,
+                "textarea",
+                &[
+                    ("style", "font-size: 14px; line-height: 1.3"),
+                    ("rows", "10"),
+                ],
+            ),
+            181.875,
+        ),
+        (
+            create(
+                &mut doc,
+                body,
+                "textarea",
+                &[
+                    ("style", "font-size: 14.4px; line-height: 1.5"),
+                    ("rows", "3"),
+                ],
+            ),
+            64.828125,
+        ),
+        (
+            create(
+                &mut doc,
+                body,
+                "input",
+                &[
+                    ("style", "font-size: 14px; line-height: 18.2px"),
+                    ("value", "x"),
+                ],
+            ),
+            18.203125,
+        ),
+    ];
+    doc.resolve(0.0);
+    let height = |id: NodeId| doc.get_client_bounding_rect(id).unwrap().height;
+    let top = |id: NodeId| doc.get_client_bounding_rect(id).unwrap().y;
+    assert_eq!(height(line), 28.796875, "the line of text");
+    assert_eq!(top(after) - top(stack), 143.984375, "five inputs");
+    for (field, chrome) in cases {
+        assert_eq!(height(field), chrome, "field {field}");
+    }
+}

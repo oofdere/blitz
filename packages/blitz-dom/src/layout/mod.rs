@@ -269,14 +269,10 @@ impl LayoutPassState<'_> {
         let node = &mut self.nodes[dom_node_id(node_id)];
 
         let font_styles = node.primary_styles().map(|style| {
-            use style::values::computed::font::LineHeight;
-
             let font_size = style.slow_clone_font_size().used_size().px();
-            let line_height = match style.clone_line_height() {
-                LineHeight::Normal => font_size * 1.2,
-                LineHeight::Number(num) => font_size * num.0,
-                LineHeight::Length(value) => value.0.px(),
-            };
+            let line_height =
+                crate::stylo_to_parley::line_height_px(&style.clone_line_height(), font_size)
+                    .unwrap_or(font_size * 1.2);
 
             (font_size, line_height)
         });
