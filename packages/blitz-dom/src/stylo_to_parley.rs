@@ -446,10 +446,19 @@ pub(crate) fn style(
 
     // Convert font size and line height
     let font_size = font_styles.font_size.used_size.0.px();
+    // A line's height is kept in Chrome's layout unit, 1/64 of a pixel, so
+    // that many lines add up as Chrome's do: a length (a percentage is one by
+    // now) rounds to it, and a number takes the font size floored to it and
+    // floors the product.
     let line_height = match font_styles.line_height {
         stylo::LineHeight::Normal => parley::LineHeight::NORMAL,
-        stylo::LineHeight::Number(num) => parley::LineHeight::FontSizeRelative(num.0),
-        stylo::LineHeight::Length(value) => parley::LineHeight::Absolute(value.0.px()),
+        stylo::LineHeight::Number(num) => {
+            let font_size = (font_size * 64.0).floor() / 64.0;
+            parley::LineHeight::Absolute((font_size * num.0 * 64.0).floor() / 64.0)
+        }
+        stylo::LineHeight::Length(value) => {
+            parley::LineHeight::Absolute((value.0.px() * 64.0).round() / 64.0)
+        }
     };
     let vertical_align = self::vertical_align(style);
 
