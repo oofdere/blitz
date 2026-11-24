@@ -1518,7 +1518,8 @@ impl Node {
     /// paint lists and inline layouts it walks can still name nodes the mutation
     /// dropped; those are skipped.
     ///
-    /// The point is tested as Chrome 157 tests it: as the rectangle one device pixel wide
+    /// The point is tested as Chrome 157 tests it: taken down to Chrome's layout unit, a 64th
+    /// of a CSS pixel, and then as the rectangle one device pixel wide
     /// and high that runs right and down from it, `1 / scale` CSS pixels a side. A box is
     /// hit when it overlaps that rectangle, a cut lets it through when the rectangle reaches
     /// inside it, and the topmost box that is hit is the one found. So a box is hit from one
@@ -1527,7 +1528,7 @@ impl Node {
     /// is found. Text is still found at the point itself.
     pub fn hit(&self, x: f32, y: f32, scale: f64) -> Option<HitResult> {
         let side = (1.0 / scale) as f32;
-        self.hit_inner(x, y, side, side, scale, &mut None)
+        self.hit_inner(layout_unit(x), layout_unit(y), side, side, scale, &mut None)
     }
 
     /// [`hit`](Self::hit), also resolving the innermost overlay scrollbar
@@ -1582,8 +1583,12 @@ impl Node {
 
         let size = self.unrounded_layout().size;
         let (left, top) = (self.scroll_offset().x as f32, self.scroll_offset().y as f32);
-        let matches_self =
-            x < size.width + left && x + width > left && y < size.height + top && y + height > top;
+        let matches_self = size.width > 0.0
+            && size.height > 0.0
+            && x < size.width + left
+            && x + width > left
+            && y < size.height + top
+            && y + height > top;
 
         let layout = self.unrounded_layout();
         let overflow_rect = layout.scrollable_overflow_rect;
@@ -2617,6 +2622,12 @@ pub(crate) fn style_is_out_of_flow(style: &ComputedValues) -> bool {
     let box_style = style.get_box();
     matches!(box_style.position, Position::Absolute | Position::Fixed)
         && !box_style.display.is_none()
+}
+
+/// A coordinate taken down to Chrome's layout unit, a 64th of a CSS pixel. Scaling an `f32`
+/// by 64 only moves its exponent, so this is exact over the whole range.
+pub(crate) fn layout_unit(at: f32) -> f32 {
+    (at * 64.0).floor() / 64.0
 }
 
 #[cfg(test)]

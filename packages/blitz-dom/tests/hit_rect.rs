@@ -47,7 +47,8 @@ fn absolute(doc: &mut BaseDocument, parent: NodeId, style: &str) -> NodeId {
 
 /// A box at left 10.3 is found from 9.3125 at scale 1 and from 9.8125 at scale 2, a 64th
 /// later than the point whose device pixel would end at its left edge, up to 60.28125,
-/// and not at 60.3, its right edge. Top and bottom are the same.
+/// and not at 60.3125, past its right edge. Top and bottom are the same, and a node's own
+/// hit test takes the point down to a 64th as the document's does.
 #[test]
 fn a_box_is_found_from_a_device_pixel_before_its_left_edge_to_its_right_edge() {
     for (scale, miss, hit) in [(1.0, 9.296875, 9.3125), (2.0, 9.796875, 9.8125)] {
@@ -71,6 +72,42 @@ fn a_box_is_found_from_a_device_pixel_before_its_left_edge_to_its_right_edge() {
         assert_eq!(at(30.0, miss), Some(html), "y {miss} at scale {scale}");
         assert_eq!(at(30.0, hit), Some(target), "y {hit} at scale {scale}");
         assert_eq!(at(30.0, 30.3125), Some(html), "at scale {scale}");
+        let node_hit = |x: f32| {
+            doc.root_element()
+                .hit(x, 20.0, f64::from(scale))
+                .map(|hit| hit.node_id)
+        };
+        assert_ne!(node_hit(9.31), Some(target), "at scale {scale}");
+        assert_eq!(node_hit(hit), Some(target), "at scale {scale}");
+    }
+}
+
+/// A box with no width, or no height, is never found, though the device pixel at the point
+/// reaches across its edge: a box 0 wide at left 10.3 and one 0 high at top 10.3 are not
+/// found from 9.3125 to 10.3, at scale 1 or 2, and the root element is. What such a box
+/// holds is still found.
+#[test]
+fn a_box_with_no_area_is_never_found() {
+    for scale in [1.0, 2.0] {
+        let (mut doc, html, body) = blank(scale);
+        absolute(
+            &mut doc,
+            body,
+            "left: 10.3px; top: 10px; width: 0; height: 20px; background: red",
+        );
+        let flat = absolute(
+            &mut doc,
+            body,
+            "left: 100px; top: 10.3px; width: 50px; height: 0",
+        );
+        let held = element(&mut doc, flat, "div", "width: 10px; height: 10px");
+        doc.resolve(0.0);
+        let at = |x: f32, y: f32| doc.element_from_point(x, y);
+        for point in [9.3125, 9.4, 9.5, 10.0, 10.2, 10.29, 10.3] {
+            assert_eq!(at(point, 20.0), Some(html), "x {point} at scale {scale}");
+            assert_eq!(at(130.0, point), Some(html), "y {point} at scale {scale}");
+        }
+        assert_eq!(at(105.0, 15.0), Some(held), "at scale {scale}");
     }
 }
 
