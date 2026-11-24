@@ -2070,11 +2070,9 @@ impl BaseDocument {
         }
         let mut scrollbar = None;
         let scale = self.viewport().scale_f64();
-        let side = (1.0 / scale) as f32;
         let unit = crate::node::layout_unit;
-        let hit =
-            self.root_element()
-                .hit_inner(unit(x), unit(y), side, side, scale, &mut scrollbar);
+        let area = crate::node::HitArea::at(unit(x), unit(y), (1.0 / scale) as f32);
+        let hit = self.root_element().hit_inner(area, scale, &mut scrollbar);
         (hit, scrollbar)
     }
 

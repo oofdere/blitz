@@ -1525,10 +1525,12 @@ impl Node {
     /// inside it, and the topmost box that is hit is the one found. So a box is hit from one
     /// device pixel before its left and top edges up to, and not at, its right and bottom
     /// ones, and of two boxes a device pixel at the point both reach, the one painted later
-    /// is found. Text is still found at the point itself.
+    /// is found. Under a transform the device pixel turns with the box, and a box is hit
+    /// when it overlaps the rectangle the turned pixel is in ([`HitArea`]). Text, and the
+    /// coordinates a hit gives, are at the point itself.
     pub fn hit(&self, x: f32, y: f32, scale: f64) -> Option<HitResult> {
-        let side = (1.0 / scale) as f32;
-        self.hit_inner(layout_unit(x), layout_unit(y), side, side, scale, &mut None)
+        let area = HitArea::at(layout_unit(x), layout_unit(y), (1.0 / scale) as f32);
+        self.hit_inner(area, scale, &mut None)
     }
 
     /// [`hit`](Self::hit), also resolving the innermost overlay scrollbar
@@ -1537,10 +1539,7 @@ impl Node {
     /// included — of every other hit test).
     pub(crate) fn hit_inner(
         &self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
+        area: HitArea,
         scale: f64,
         scrollbar: &mut Option<crate::node::ScrollbarRef>,
     ) -> Option<HitResult> {
@@ -1564,31 +1563,20 @@ impl Node {
 
         // The transform is the box's, so it is undone first, in its border box; the scroll
         // offset moves what the box holds inside that, so it comes after.
-        let mut x = x - self.unrounded_layout().location.x;
-        let mut y = y - self.unrounded_layout().location.y;
-
-        let (mut width, mut height) = (width, height);
+        let location = self.unrounded_layout().location;
+        let mut area = area.less(location.x, location.y);
         if let Some(t) = self.transform().as_deref() {
-            let inverse = t.inverse();
-            let p = inverse * kurbo::Point::new(x as f64 * scale, y as f64 * scale);
-            let q = inverse
-                * kurbo::Point::new((x + width) as f64 * scale, (y + height) as f64 * scale);
-            x = (p.x.min(q.x) / scale) as f32;
-            y = (p.y.min(q.y) / scale) as f32;
-            width = ((p.x - q.x).abs() / scale) as f32;
-            height = ((p.y - q.y).abs() / scale) as f32;
+            area = area.mapped(t.inverse(), scale);
         }
-        x += self.scroll_offset().x as f32;
-        y += self.scroll_offset().y as f32;
+        let (left, top) = (self.scroll_offset().x as f32, self.scroll_offset().y as f32);
+        let area = area.less(-left, -top);
+        let (x, y) = (area.x, area.y);
+        let [x0, y0, x1, y1] = area.bounds();
 
         let size = self.unrounded_layout().size;
-        let (left, top) = (self.scroll_offset().x as f32, self.scroll_offset().y as f32);
         let matches_self = size.width > 0.0
             && size.height > 0.0
-            && x < size.width + left
-            && x + width > left
-            && y < size.height + top
-            && y + height > top;
+            && area.overlaps([left, top, size.width + left, size.height + top]);
 
         let layout = self.unrounded_layout();
         let overflow_rect = layout.scrollable_overflow_rect;
@@ -1619,20 +1607,20 @@ impl Node {
             } else {
                 0.0
             };
-        let matches_content = !(x + width < overflow_rect.left() + client_x
-            || x > overflow_rect.right() + client_x
-            || y + height < overflow_rect.top() + client_y
-            || y > overflow_rect.bottom() + client_y);
+        let matches_content = !(x1 < overflow_rect.left() + client_x
+            || x0 > overflow_rect.right() + client_x
+            || y1 < overflow_rect.top() + client_y
+            || y0 > overflow_rect.bottom() + client_y);
 
         let matches_hoisted_content = match &self.stacking_context {
             Some(sc) => {
                 // Both the point (after the scroll adjustment above) and the
                 // bbox are in this node's unscrolled content coordinates.
                 let bbox = sc.hoisted_content_bbox(self.tree(), self.id, scale);
-                x + width + SLACK >= bbox.left
-                    && x - SLACK <= bbox.right
-                    && y + height + SLACK >= bbox.top
-                    && y - SLACK <= bbox.bottom
+                x1 + SLACK >= bbox.left
+                    && x0 - SLACK <= bbox.right
+                    && y1 + SLACK >= bbox.top
+                    && y0 - SLACK <= bbox.bottom
             }
             None => false,
         };
@@ -1641,10 +1629,10 @@ impl Node {
         // coordinates here are in CSS pixels, so unscale it before comparing.
         let overflow = *self.scrollable_overflow();
 
-        let matches_overflow = x + width + SLACK >= (overflow.x0 / scale) as f32
-            && x - SLACK <= (overflow.x1 / scale) as f32
-            && y + height + SLACK >= (overflow.y0 / scale) as f32
-            && y - SLACK <= (overflow.y1 / scale) as f32;
+        let matches_overflow = x1 + SLACK >= (overflow.x0 / scale) as f32
+            && x0 - SLACK <= (overflow.x1 / scale) as f32
+            && y1 + SLACK >= (overflow.y0 / scale) as f32
+            && y0 - SLACK <= (overflow.y1 / scale) as f32;
 
         // The hoisted children's box and the scrollable overflow are measured from the boxes'
         // rounded places, and the point from their unrounded ones, so they are given a pixel
@@ -1684,12 +1672,7 @@ impl Node {
 
         // A box that clips its overflow cuts its line boxes, and every box it contains, at its
         // overflow clip edge on the axes where its overflow is not visible.
-        let clips_point = self.clips_out(
-            x - self.scroll_offset().x as f32,
-            y - self.scroll_offset().y as f32,
-            width,
-            height,
-        );
+        let clips_point = self.clips_out(area.less(left, top));
 
         // Positive z_index hoisted children
         if matches_hoisted_content {
@@ -1699,7 +1682,7 @@ impl Node {
                         continue;
                     };
                     if clips_point && !child.is_fixed_to_viewport()
-                        || self.clipped_on_the_way(child, x, y, width, height)
+                        || self.clipped_on_the_way(child, area)
                     {
                         continue;
                     }
@@ -1708,9 +1691,7 @@ impl Node {
                         self.id,
                         hoisted_child.node_id,
                     );
-                    let x = x - pos.x;
-                    let y = y - pos.y;
-                    if let Some(hit) = child.hit_inner(x, y, width, height, scale, scrollbar) {
+                    if let Some(hit) = child.hit_inner(area.less(pos.x, pos.y), scale, scrollbar) {
                         return Some(hit);
                     }
                 }
@@ -1726,14 +1707,12 @@ impl Node {
                 continue;
             }
             let child_position = child.taffy_position();
-            let mut child_x = x;
-            let mut child_y = y;
+            let mut child_area = area;
             if let Some(offset) = child.lifted_offset(self.id, true) {
-                if self.clipped_on_the_way(child, x, y, width, height) {
+                if self.clipped_on_the_way(child, area) {
                     continue;
                 }
-                child_x -= offset.x;
-                child_y -= offset.y;
+                child_area = child_area.less(offset.x, offset.y);
             } else if outside && !child.is_fixed_to_viewport() {
                 continue;
             } else if child_position.is_out_of_flow() && child.is_fixed_to_viewport() {
@@ -1741,13 +1720,12 @@ impl Node {
                 // with it. (A fixed box whose containing block is a transformed
                 // ancestor, the root element included, scrolls with it like any
                 // other out-of-flow box.)
-                child_x -= self.scroll_offset().x as f32;
-                child_y -= self.scroll_offset().y as f32;
                 let viewport_scroll = self.tree().viewport_scroll();
-                child_x -= viewport_scroll.x as f32;
-                child_y -= viewport_scroll.y as f32;
+                child_area = child_area
+                    .less(left, top)
+                    .less(viewport_scroll.x as f32, viewport_scroll.y as f32);
             }
-            if let Some(hit) = child.hit_inner(child_x, child_y, width, height, scale, scrollbar) {
+            if let Some(hit) = child.hit_inner(child_area, scale, scrollbar) {
                 return Some(hit);
             }
         }
@@ -1763,7 +1741,7 @@ impl Node {
                         continue;
                     };
                     if clips_point && !child.is_fixed_to_viewport()
-                        || self.clipped_on_the_way(child, x, y, width, height)
+                        || self.clipped_on_the_way(child, area)
                     {
                         continue;
                     }
@@ -1772,9 +1750,7 @@ impl Node {
                         self.id,
                         hoisted_child.node_id,
                     );
-                    let x = x - pos.x;
-                    let y = y - pos.y;
-                    if let Some(hit) = child.hit_inner(x, y, width, height, scale, scrollbar) {
+                    if let Some(hit) = child.hit_inner(area.less(pos.x, pos.y), scale, scrollbar) {
                         return Some(hit);
                     }
                 }
@@ -1830,14 +1806,13 @@ impl Node {
         None
     }
 
-    /// Whether the rectangle `width` by `height` at (`x`, `y`), in this node's
-    /// coordinates as its children are given them, is cut away from `child`, a box this
+    /// Whether `area`, in this node's coordinates as its children are given them, is cut away from `child`, a box this
     /// node paints without being its parent, by a box between them that clips its overflow:
     /// one on the chain of `child`'s containing blocks up to this node, whose padding
-    /// box the rectangle is outside on an axis where its overflow is not visible
+    /// box the area is outside on an axis where its overflow is not visible
     /// ([`Node::clips_out`]). A box that clips is in that chain exactly when it
     /// clips `child`. Where a box is is worked out only for a box that clips.
-    fn clipped_on_the_way(&self, child: &Node, x: f32, y: f32, width: f32, height: f32) -> bool {
+    fn clipped_on_the_way(&self, child: &Node, area: HitArea) -> bool {
         let tree = self.tree();
         let mut current = child.containing_block();
         while let Some(id) = current {
@@ -1857,12 +1832,7 @@ impl Node {
                     .lifted_offset(self.id, true)
                     .unwrap_or(taffy::Point { x: 0.0, y: 0.0 });
                 let location = node.unrounded_layout().location;
-                if node.clips_out(
-                    x - origin.x - location.x,
-                    y - origin.y - location.y,
-                    width,
-                    height,
-                ) {
+                if node.clips_out(area.less(origin.x, origin.y).less(location.x, location.y)) {
                     return true;
                 }
             }
@@ -1871,18 +1841,17 @@ impl Node {
         false
     }
 
-    /// Whether the rectangle `width` by `height` at (`x`, `y`), in this box's border
-    /// box, is all outside the edge at which it cuts off what it holds
-    /// ([`Node::overflow_clip_edge`]): it does not reach past the left or the top edge,
-    /// or it starts at or after the right or the bottom one.
-    pub(crate) fn clips_out(&self, x: f32, y: f32, width: f32, height: f32) -> bool {
+    /// Whether `area`, in this box's border box, is all outside the edge at which it cuts off
+    /// what it holds ([`Node::overflow_clip_edge`]): the rectangle it is in does not reach
+    /// past the left or the top edge, or starts at or after the right or the bottom one.
+    pub(crate) fn clips_out(&self, area: HitArea) -> bool {
         let Some(([left, top, right, bottom], cuts_x, cuts_y)) =
             self.overflow_clip_edge_of(self.unrounded_layout())
         else {
             return false;
         };
-        (cuts_x && (x + width <= left || x >= right))
-            || (cuts_y && (y + height <= top || y >= bottom))
+        let [x0, y0, x1, y1] = area.bounds();
+        (cuts_x && (x1 <= left || x0 >= right)) || (cuts_y && (y1 <= top || y0 >= bottom))
     }
 
     /// The edge at which this box cuts off what it holds, as left, top, right and bottom in
@@ -2628,6 +2597,88 @@ pub(crate) fn style_is_out_of_flow(style: &ComputedValues) -> bool {
 /// by 64 only moves its exponent, so this is exact over the whole range.
 pub(crate) fn layout_unit(at: f32) -> f32 {
     (at * 64.0).floor() / 64.0
+}
+
+/// What a hit test tests, in the coordinates of the box it has reached: the point, and the
+/// device pixel that runs right and down from it, as the point and the pixel's edges from
+/// it. A transform turns the pixel with the box, and a box is hit when it overlaps the
+/// rectangle the turned pixel is in, as Chrome 157 hits a rotated box: from a pixel whose
+/// corners are all outside it, where that rectangle reaches into it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HitArea {
+    pub x: f32,
+    pub y: f32,
+    across: (f32, f32),
+    down: (f32, f32),
+}
+
+impl HitArea {
+    /// The point (`x`, `y`), and the square `side` a side that runs right and down from it.
+    pub(crate) fn at(x: f32, y: f32, side: f32) -> HitArea {
+        HitArea {
+            x,
+            y,
+            across: (side, 0.0),
+            down: (0.0, side),
+        }
+    }
+
+    /// The area as a box at (`dx`, `dy`) has it.
+    pub(crate) fn less(self, dx: f32, dy: f32) -> HitArea {
+        HitArea {
+            x: self.x - dx,
+            y: self.y - dy,
+            ..self
+        }
+    }
+
+    /// The area mapped through `inverse`, which works in device pixels, `scale` to a CSS
+    /// pixel.
+    fn mapped(self, inverse: kurbo::Affine, scale: f64) -> HitArea {
+        let point = inverse * kurbo::Point::new(self.x as f64 * scale, self.y as f64 * scale);
+        let [a, b, c, d, _, _] = inverse.as_coeffs();
+        let turned = |(x, y): (f32, f32)| {
+            let (x, y) = (x as f64, y as f64);
+            ((a * x + c * y) as f32, (b * x + d * y) as f32)
+        };
+        HitArea {
+            x: (point.x / scale) as f32,
+            y: (point.y / scale) as f32,
+            across: turned(self.across),
+            down: turned(self.down),
+        }
+    }
+
+    /// The rectangle the area is in: its left, top, right and bottom.
+    pub(crate) fn bounds(&self) -> [f32; 4] {
+        let (x, y) = (self.x, self.y);
+        let ((ax, ay), (dx, dy)) = (self.across, self.down);
+        [
+            (x, y),
+            (x + ax, y + ay),
+            (x + ax + dx, y + ay + dy),
+            (x + dx, y + dy),
+        ]
+        .iter()
+        .fold(
+            [
+                f32::INFINITY,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+            ],
+            |[left, top, right, bottom], &(x, y)| {
+                [left.min(x), top.min(y), right.max(x), bottom.max(y)]
+            },
+        )
+    }
+
+    /// Whether the rectangle the area is in overlaps the one from (`left`, `top`) to
+    /// (`right`, `bottom`) by more than an edge.
+    pub(crate) fn overlaps(&self, [left, top, right, bottom]: [f32; 4]) -> bool {
+        let [x0, y0, x1, y1] = self.bounds();
+        x0 < right && x1 > left && y0 < bottom && y1 > top
+    }
 }
 
 #[cfg(test)]

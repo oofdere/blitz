@@ -201,3 +201,76 @@ fn under_a_transform_the_device_pixel_is_the_viewports() {
         );
     }
 }
+
+/// Under a transform that mirrors the box, the hit gives the point itself, as Chrome 157's
+/// `caretPositionFromPoint` uses it, and not a corner of the device pixel: 116 across a
+/// box 50 wide at 100, flipped by `scaleX(-1)` about its centre, is 34 into it.
+#[test]
+fn under_a_mirror_the_hit_is_at_the_point() {
+    for scale in [1.0, 2.0] {
+        let (mut doc, _, body) = blank(scale);
+        let mirrored = absolute(
+            &mut doc,
+            body,
+            "left: 100px; top: 0; width: 50px; height: 20px; transform: scaleX(-1)",
+        );
+        doc.resolve(0.0);
+        let hit = doc.hit(116.0, 10.0).expect("a hit");
+        assert_eq!(hit.node_id, mirrored, "at scale {scale}");
+        assert_eq!((hit.x, hit.y), (34.0, 10.0), "at scale {scale}");
+    }
+}
+
+/// A rotated box is found where the rectangle the turned device pixel is in reaches into
+/// it, as in Chrome 157: a box 20 square turned by -45 degrees about its corner at
+/// (300, 100) from (309.5, 110.25), whose pixel only that rectangle's corner takes in, and a
+/// box 100 square turned by 20 degrees about (300, 300) from 295 across at 310 down, and not
+/// from 294.984375, and from (299.34375, 298.8125), where the rectangle reaches into it and the
+/// pixel itself does not.
+#[test]
+fn a_rotated_box_is_found_where_the_turned_pixel_reaches_it() {
+    let (mut doc, html, body) = blank(1.0);
+    let small = absolute(
+        &mut doc,
+        body,
+        "left: 300px; top: 100px; width: 20px; height: 20px; transform: rotate(-45deg); \
+         transform-origin: 0 0",
+    );
+    let large = absolute(
+        &mut doc,
+        body,
+        "left: 300px; top: 300px; width: 100px; height: 100px; transform: rotate(20deg); \
+         transform-origin: 0 0",
+    );
+    doc.resolve(0.0);
+    let at = |x: f32, y: f32| doc.element_from_point(x, y);
+    assert_eq!(at(309.5, 110.25), Some(small));
+    assert_eq!(at(310.0, 110.25), Some(small));
+    assert_eq!(at(295.0, 310.0), Some(large));
+    assert_eq!(at(295.0 - 1.0 / 64.0, 310.0), Some(html));
+    assert_eq!(at(299.34375, 298.8125), Some(large));
+}
+
+/// A box all outside its parent's clip is found where the device pixel at the point
+/// reaches both into the clip and into the box, as in Chrome 157: a clip from 100 to 130
+/// and a box from 130 to 140 inside it, from 129.5 up to 130, the clip's right edge.
+#[test]
+fn a_box_past_a_clip_is_found_from_a_pixel_that_reaches_into_both() {
+    let (mut doc, html, body) = blank(1.0);
+    let clip = absolute(
+        &mut doc,
+        body,
+        "left: 100px; top: 0; width: 30px; height: 50px; overflow: hidden",
+    );
+    let past = absolute(
+        &mut doc,
+        clip,
+        "left: 30px; top: 0; width: 10px; height: 50px",
+    );
+    doc.resolve(0.0);
+    let at = |x: f32| doc.element_from_point(x, 10.0);
+    assert_eq!(at(129.0), Some(clip));
+    assert_eq!(at(129.5), Some(past));
+    assert_eq!(at(130.0 - 1.0 / 64.0), Some(past));
+    assert_eq!(at(130.0), Some(html));
+}
