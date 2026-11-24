@@ -32,12 +32,27 @@ use taffy::{Point, Rect};
 /// hoisted by Taffy, otherwise `layout_parent`, which is set for every layout
 /// child by `resolve_layout_children`, anonymous blocks included).
 pub fn hoisted_child_position(tree: &NodeTree, sc_root_id: NodeId, child_id: NodeId) -> Point<f32> {
-    position_up_to(tree, child_id, Some(sc_root_id))
+    position_up_to(tree, child_id, Some(sc_root_id), false)
+}
+
+/// [`hoisted_child_position`] from the boxes' places before layout rounds them to whole
+/// pixels, as hit testing measures them.
+pub fn unrounded_hoisted_child_position(
+    tree: &NodeTree,
+    sc_root_id: NodeId,
+    child_id: NodeId,
+) -> Point<f32> {
+    position_up_to(tree, child_id, Some(sc_root_id), true)
 }
 
 /// The same offset from `stop`, or from the top of the positioning chain
-/// for none.
-fn position_up_to(tree: &NodeTree, child_id: NodeId, stop: Option<NodeId>) -> Point<f32> {
+/// for none, from the boxes' places before layout rounds them when `unrounded`.
+fn position_up_to(
+    tree: &NodeTree,
+    child_id: NodeId,
+    stop: Option<NodeId>,
+    unrounded: bool,
+) -> Point<f32> {
     let child = &tree[child_id];
     let mut position = Point::ZERO;
     let mut current = child.containing_block();
@@ -62,7 +77,10 @@ fn position_up_to(tree: &NodeTree, child_id: NodeId, stop: Option<NodeId>) -> Po
         let Some(node) = tree.get(id) else {
             break;
         };
-        let location = node.final_layout().location;
+        let location = match unrounded {
+            true => node.unrounded_layout().location,
+            false => node.final_layout().location,
+        };
         let scroll_offset = *node.scroll_offset();
         position.x += location.x - scroll_offset.x as f32;
         position.y += location.y - scroll_offset.y as f32;
@@ -586,6 +604,12 @@ impl Node {
     /// offset is then where the box's chain puts it less where the painter's
     /// own chain puts the painter's scrolled content.
     pub fn lifted_paint_offset(&self, painter_id: NodeId) -> Option<Point<f32>> {
+        self.lifted_offset(painter_id, false)
+    }
+
+    /// [`Self::lifted_paint_offset`], from the boxes' places before layout rounds them to
+    /// whole pixels when `unrounded`, as hit testing measures them.
+    pub(crate) fn lifted_offset(&self, painter_id: NodeId, unrounded: bool) -> Option<Point<f32>> {
         let containing_block = self.containing_block()?;
         if containing_block == painter_id {
             return None;
@@ -595,13 +619,16 @@ impl Node {
             tree.get(id)?.containing_block()
         });
         if chain.any(|id| id == painter_id) {
-            return Some(hoisted_child_position(tree, painter_id, self.id));
+            return Some(position_up_to(tree, self.id, Some(painter_id), unrounded));
         }
-        let at = position_up_to(tree, self.id, None);
+        let at = position_up_to(tree, self.id, None, unrounded);
         let mut painter = Point::ZERO;
         let mut current = Some(painter_id);
         while let Some(node) = current.and_then(|id| tree.get(id)) {
-            let location = node.final_layout().location;
+            let location = match unrounded {
+                true => node.unrounded_layout().location,
+                false => node.final_layout().location,
+            };
             let scroll_offset = *node.scroll_offset();
             painter.x += location.x - scroll_offset.x as f32;
             painter.y += location.y - scroll_offset.y as f32;

@@ -1,5 +1,7 @@
 use crate::Document;
-use crate::layout::paint_tree::{HoistedPaintChild, StackingContext};
+use crate::layout::paint_tree::{
+    HoistedPaintChild, StackingContext, unrounded_hoisted_child_position,
+};
 use bitflags::bitflags;
 use blitz_traits::events::{
     BlitzPointerEvent, BlitzPointerId, DomEventData, HitResult, PointerCoords,
@@ -1516,10 +1518,16 @@ impl Node {
     /// paint lists and inline layouts it walks can still name nodes the mutation
     /// dropped; those are skipped.
     ///
-    /// TODO: z-index
-    /// (If multiple children are positioned at the position then a random one will be recursed into)
+    /// The point is tested as Chrome 157 tests it: as the rectangle one device pixel wide
+    /// and high that runs right and down from it, `1 / scale` CSS pixels a side. A box is
+    /// hit when it overlaps that rectangle, a cut lets it through when the rectangle reaches
+    /// inside it, and the topmost box that is hit is the one found. So a box is hit from one
+    /// device pixel before its left and top edges up to, and not at, its right and bottom
+    /// ones, and of two boxes a device pixel at the point both reach, the one painted later
+    /// is found. Text is still found at the point itself.
     pub fn hit(&self, x: f32, y: f32, scale: f64) -> Option<HitResult> {
-        self.hit_inner(x, y, scale, &mut None)
+        let side = (1.0 / scale) as f32;
+        self.hit_inner(x, y, side, side, scale, &mut None)
     }
 
     /// [`hit`](Self::hit), also resolving the innermost overlay scrollbar
@@ -1530,6 +1538,8 @@ impl Node {
         &self,
         x: f32,
         y: f32,
+        width: f32,
+        height: f32,
         scale: f64,
         scrollbar: &mut Option<crate::node::ScrollbarRef>,
     ) -> Option<HitResult> {
@@ -1553,24 +1563,29 @@ impl Node {
 
         // The transform is the box's, so it is undone first, in its border box; the scroll
         // offset moves what the box holds inside that, so it comes after.
-        let mut x = x - self.final_layout().location.x;
-        let mut y = y - self.final_layout().location.y;
+        let mut x = x - self.unrounded_layout().location.x;
+        let mut y = y - self.unrounded_layout().location.y;
 
+        let (mut width, mut height) = (width, height);
         if let Some(t) = self.transform().as_deref() {
-            let p = t.inverse() * kurbo::Point::new(x as f64 * scale, y as f64 * scale);
-            x = (p.x / scale) as f32;
-            y = (p.y / scale) as f32;
+            let inverse = t.inverse();
+            let p = inverse * kurbo::Point::new(x as f64 * scale, y as f64 * scale);
+            let q = inverse
+                * kurbo::Point::new((x + width) as f64 * scale, (y + height) as f64 * scale);
+            x = (p.x.min(q.x) / scale) as f32;
+            y = (p.y.min(q.y) / scale) as f32;
+            width = ((p.x - q.x).abs() / scale) as f32;
+            height = ((p.y - q.y).abs() / scale) as f32;
         }
         x += self.scroll_offset().x as f32;
         y += self.scroll_offset().y as f32;
 
-        let size = self.final_layout().size;
-        let matches_self = !(x < self.scroll_offset().x as f32
-            || x > size.width + self.scroll_offset().x as f32
-            || y < self.scroll_offset().y as f32
-            || y > size.height + self.scroll_offset().y as f32);
+        let size = self.unrounded_layout().size;
+        let (left, top) = (self.scroll_offset().x as f32, self.scroll_offset().y as f32);
+        let matches_self =
+            x < size.width + left && x + width > left && y < size.height + top && y + height > top;
 
-        let layout = self.final_layout();
+        let layout = self.unrounded_layout();
         let overflow_rect = layout.scrollable_overflow_rect;
         // Not `layout_style()`: hit testing also reaches elements that have no computed styles
         // yet (a pointer event before the first resolve). Those count as left-to-right.
@@ -1599,9 +1614,9 @@ impl Node {
             } else {
                 0.0
             };
-        let matches_content = !(x < overflow_rect.left() + client_x
+        let matches_content = !(x + width < overflow_rect.left() + client_x
             || x > overflow_rect.right() + client_x
-            || y < overflow_rect.top() + client_y
+            || y + height < overflow_rect.top() + client_y
             || y > overflow_rect.bottom() + client_y);
 
         let matches_hoisted_content = match &self.stacking_context {
@@ -1609,7 +1624,10 @@ impl Node {
                 // Both the point (after the scroll adjustment above) and the
                 // bbox are in this node's unscrolled content coordinates.
                 let bbox = sc.hoisted_content_bbox(self.tree(), self.id, scale);
-                x >= bbox.left && x <= bbox.right && y >= bbox.top && y <= bbox.bottom
+                x + width + SLACK >= bbox.left
+                    && x - SLACK <= bbox.right
+                    && y + height + SLACK >= bbox.top
+                    && y - SLACK <= bbox.bottom
             }
             None => false,
         };
@@ -1618,10 +1636,15 @@ impl Node {
         // coordinates here are in CSS pixels, so unscale it before comparing.
         let overflow = *self.scrollable_overflow();
 
-        let matches_overflow = x >= (overflow.x0 / scale) as f32
-            && x <= (overflow.x1 / scale) as f32
-            && y >= (overflow.y0 / scale) as f32
-            && y <= (overflow.y1 / scale) as f32;
+        let matches_overflow = x + width + SLACK >= (overflow.x0 / scale) as f32
+            && x - SLACK <= (overflow.x1 / scale) as f32
+            && y + height + SLACK >= (overflow.y0 / scale) as f32
+            && y - SLACK <= (overflow.y1 / scale) as f32;
+
+        // The hoisted children's box and the scrollable overflow are measured from the boxes'
+        // rounded places, and the point from their unrounded ones, so they are given a pixel
+        // either way: they only say whether a child may still be under the point.
+        const SLACK: f32 = 1.0;
 
         // A box this one paints without containing it, or a fixed box placed against the
         // viewport, can be outside all of these: only those children are tried then.
@@ -1647,8 +1670,8 @@ impl Node {
         // they are painted.
         let content_box_offset = if self.flags.is_inline_root() {
             taffy::Point {
-                x: self.final_layout().padding.left + self.final_layout().border.left,
-                y: self.final_layout().padding.top + self.final_layout().border.top,
+                x: layout.padding.left + layout.border.left,
+                y: layout.padding.top + layout.border.top,
             }
         } else {
             taffy::Point { x: 0.0, y: 0.0 }
@@ -1659,6 +1682,8 @@ impl Node {
         let clips_point = self.clips_out(
             x - self.scroll_offset().x as f32,
             y - self.scroll_offset().y as f32,
+            width,
+            height,
         );
 
         // Positive z_index hoisted children
@@ -1669,14 +1694,18 @@ impl Node {
                         continue;
                     };
                     if clips_point && !child.is_fixed_to_viewport()
-                        || self.clipped_on_the_way(child, x, y)
+                        || self.clipped_on_the_way(child, x, y, width, height)
                     {
                         continue;
                     }
-                    let pos = hoisted_child.position(self.tree(), self.id);
+                    let pos = unrounded_hoisted_child_position(
+                        self.tree(),
+                        self.id,
+                        hoisted_child.node_id,
+                    );
                     let x = x - pos.x;
                     let y = y - pos.y;
-                    if let Some(hit) = child.hit_inner(x, y, scale, scrollbar) {
+                    if let Some(hit) = child.hit_inner(x, y, width, height, scale, scrollbar) {
                         return Some(hit);
                     }
                 }
@@ -1694,8 +1723,8 @@ impl Node {
             let child_position = child.taffy_position();
             let mut child_x = x;
             let mut child_y = y;
-            if let Some(offset) = child.lifted_paint_offset(self.id) {
-                if self.clipped_on_the_way(child, x, y) {
+            if let Some(offset) = child.lifted_offset(self.id, true) {
+                if self.clipped_on_the_way(child, x, y, width, height) {
                     continue;
                 }
                 child_x -= offset.x;
@@ -1713,7 +1742,7 @@ impl Node {
                 child_x -= viewport_scroll.x as f32;
                 child_y -= viewport_scroll.y as f32;
             }
-            if let Some(hit) = child.hit_inner(child_x, child_y, scale, scrollbar) {
+            if let Some(hit) = child.hit_inner(child_x, child_y, width, height, scale, scrollbar) {
                 return Some(hit);
             }
         }
@@ -1729,14 +1758,18 @@ impl Node {
                         continue;
                     };
                     if clips_point && !child.is_fixed_to_viewport()
-                        || self.clipped_on_the_way(child, x, y)
+                        || self.clipped_on_the_way(child, x, y, width, height)
                     {
                         continue;
                     }
-                    let pos = hoisted_child.position(self.tree(), self.id);
+                    let pos = unrounded_hoisted_child_position(
+                        self.tree(),
+                        self.id,
+                        hoisted_child.node_id,
+                    );
                     let x = x - pos.x;
                     let y = y - pos.y;
-                    if let Some(hit) = child.hit_inner(x, y, scale, scrollbar) {
+                    if let Some(hit) = child.hit_inner(x, y, width, height, scale, scrollbar) {
                         return Some(hit);
                     }
                 }
@@ -1792,14 +1825,14 @@ impl Node {
         None
     }
 
-    /// Whether the point (`x`, `y`), in this node's coordinates as its children
-    /// are given them, is cut away from `child`, a box this node paints without
-    /// being its parent, by a box between them that clips its overflow: one on
-    /// the chain of `child`'s containing blocks up to this node, whose padding
-    /// box the point is outside on an axis where its overflow is not visible
+    /// Whether the rectangle `width` by `height` at (`x`, `y`), in this node's
+    /// coordinates as its children are given them, is cut away from `child`, a box this
+    /// node paints without being its parent, by a box between them that clips its overflow:
+    /// one on the chain of `child`'s containing blocks up to this node, whose padding
+    /// box the rectangle is outside on an axis where its overflow is not visible
     /// ([`Node::clips_out`]). A box that clips is in that chain exactly when it
     /// clips `child`. Where a box is is worked out only for a box that clips.
-    fn clipped_on_the_way(&self, child: &Node, x: f32, y: f32) -> bool {
+    fn clipped_on_the_way(&self, child: &Node, x: f32, y: f32, width: f32, height: f32) -> bool {
         let tree = self.tree();
         let mut current = child.containing_block();
         while let Some(id) = current {
@@ -1816,10 +1849,15 @@ impl Node {
                 });
             if clips {
                 let origin = node
-                    .lifted_paint_offset(self.id)
+                    .lifted_offset(self.id, true)
                     .unwrap_or(taffy::Point { x: 0.0, y: 0.0 });
-                let location = node.final_layout().location;
-                if node.clips_out(x - origin.x - location.x, y - origin.y - location.y) {
+                let location = node.unrounded_layout().location;
+                if node.clips_out(
+                    x - origin.x - location.x,
+                    y - origin.y - location.y,
+                    width,
+                    height,
+                ) {
                     return true;
                 }
             }
@@ -1828,13 +1866,18 @@ impl Node {
         false
     }
 
-    /// Whether the point (`x`, `y`), in this box's border box, is outside the edge at which
-    /// it cuts off what it holds ([`Node::overflow_clip_edge`]).
-    pub(crate) fn clips_out(&self, x: f32, y: f32) -> bool {
-        let Some(([left, top, right, bottom], cuts_x, cuts_y)) = self.overflow_clip_edge() else {
+    /// Whether the rectangle `width` by `height` at (`x`, `y`), in this box's border
+    /// box, is all outside the edge at which it cuts off what it holds
+    /// ([`Node::overflow_clip_edge`]): it does not reach past the left or the top edge,
+    /// or it starts at or after the right or the bottom one.
+    pub(crate) fn clips_out(&self, x: f32, y: f32, width: f32, height: f32) -> bool {
+        let Some(([left, top, right, bottom], cuts_x, cuts_y)) =
+            self.overflow_clip_edge_of(self.unrounded_layout())
+        else {
             return false;
         };
-        (cuts_x && (x < left || x > right)) || (cuts_y && (y < top || y > bottom))
+        (cuts_x && (x + width <= left || x >= right))
+            || (cuts_y && (y + height <= top || y >= bottom))
     }
 
     /// The edge at which this box cuts off what it holds, as left, top, right and bottom in
@@ -1854,6 +1897,11 @@ impl Node {
     /// `overflow-clip-margin`: Chrome 157 ignores the margin's length and its box on a root
     /// with `contain: paint`, in what it paints, hits and scrolls.
     pub(crate) fn overflow_clip_edge(&self) -> Option<([f32; 4], bool, bool)> {
+        self.overflow_clip_edge_of(self.final_layout())
+    }
+
+    /// [`Node::overflow_clip_edge`] for the box as `layout` places it.
+    fn overflow_clip_edge_of(&self, layout: &Layout) -> Option<([f32; 4], bool, bool)> {
         use style::values::computed::Contain;
         use style::values::generics::box_::OverflowClipMarginBox;
         let (overflow_x, overflow_y) = self.used_overflow()?;
@@ -1871,7 +1919,6 @@ impl Node {
         if !cuts_x && !cuts_y {
             return None;
         }
-        let layout = self.final_layout();
         let (border, padding, size) = (layout.border, layout.padding, layout.size);
         let padding_box = [
             border.left,

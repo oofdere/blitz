@@ -1772,6 +1772,8 @@ impl BaseDocument {
     }
 
     /// The topmost box at (x, y) in page coordinates: those of the viewport plus its scroll.
+    /// The point is taken down to Chrome's layout unit, a 64th of a CSS pixel, and tested
+    /// as the device pixel at it ([`Node::hit`]).
     pub fn hit(&self, x: f32, y: f32) -> Option<HitResult> {
         self.hit_with_scrollbar(x, y).0
     }
@@ -2067,9 +2069,12 @@ impl BaseDocument {
             return (None, None);
         }
         let mut scrollbar = None;
-        let hit = self
-            .root_element()
-            .hit_inner(x, y, self.viewport().scale_f64(), &mut scrollbar);
+        let scale = self.viewport().scale_f64();
+        let side = (1.0 / scale) as f32;
+        let unit = |at: f32| (at * 64.0).floor() / 64.0;
+        let hit =
+            self.root_element()
+                .hit_inner(unit(x), unit(y), side, side, scale, &mut scrollbar);
         (hit, scrollbar)
     }
 
