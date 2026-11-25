@@ -423,6 +423,9 @@ impl DocumentMutator<'_> {
                     &mut self.doc.layout_ctx,
                     value,
                 );
+            } else if matches!(element.special_data, SpecialElementData::InputValue(_)) {
+                // The next editor starts from the attribute, as one would now.
+                element.special_data = SpecialElementData::None;
             }
             return;
         }
@@ -557,6 +560,8 @@ impl DocumentMutator<'_> {
                     &mut self.doc.layout_ctx,
                     "",
                 );
+            } else if matches!(element.special_data, SpecialElementData::InputValue(_)) {
+                element.special_data = SpecialElementData::None;
             }
         }
 

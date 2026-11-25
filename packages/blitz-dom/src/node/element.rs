@@ -892,7 +892,7 @@ impl ElementData {
     /// attribute when its `type` changes to `kind`, a state in the default or
     /// the default/on mode, as HTML's steps for a change of `type` have it:
     /// the text of its editor, or the value kept from one, when that is not
-    /// the attribute's value already.
+    /// empty and not the attribute's value already.
     pub(crate) fn value_left_for(&self, kind: &str) -> Option<String> {
         if self.name.local != local_name!("input")
             || !has_value_mode(self.attr(local_name!("type")))
@@ -906,7 +906,7 @@ impl ElementData {
             SpecialElementData::InputValue(text) => text.clone(),
             _ => return None,
         };
-        (self.attr(local_name!("value")).unwrap_or("") != text).then_some(text)
+        (!text.is_empty() && self.attr(local_name!("value")) != Some(&text)).then_some(text)
     }
 
     /// Whether this is a checkbox or a radio button, its `type` read without

@@ -147,8 +147,9 @@ fn an_input_whose_type_leaves_the_text_states_drops_its_editor() {
 /// state and back to `text`, as in Chrome 157. A checkbox, a radio button,
 /// a button or a hidden input writes it into its `value` attribute, as
 /// HTML's steps for leaving the value mode have it, and one in the value
-/// mode, as a date or a range, keeps it. With nothing typed, a checkbox
-/// writes nothing and the field comes back empty.
+/// mode, as a date or a range, keeps it. An empty value is not written, so a
+/// field emptied over `def` comes back as `def`, and with nothing typed a
+/// checkbox writes nothing and the field comes back empty.
 #[test]
 fn what_was_typed_comes_back_through_a_change_of_type() {
     let mut doc = BaseDocument::new(DocumentConfig {
@@ -159,20 +160,25 @@ fn what_was_typed_comes_back_through_a_change_of_type() {
     let root = doc.root_node().id;
     let html = create(&mut doc, root, "html", &[]);
     let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    // To, typed, the attribute, the attribute in the other type, and the
+    // value back in text.
     let rows = [
-        ("CHECKBOX", Some("abc"), Some("def"), Some("abc")),
-        ("Radio", Some("abc"), Some("def"), Some("abc")),
-        ("CHECKBOX", Some("abc"), None, Some("abc")),
-        ("button", Some("abc"), Some("def"), Some("abc")),
-        ("hidden", Some("abc"), Some("def"), Some("abc")),
-        ("date", Some("2024-01-02"), None, None),
-        ("range", Some("37"), None, None),
-        ("number", Some("12"), None, None),
-        ("checkbox", None, None, None),
+        ("CHECKBOX", Some("abc"), Some("def"), Some("abc"), "abc"),
+        ("Radio", Some("abc"), Some("def"), Some("abc"), "abc"),
+        ("CHECKBOX", Some("abc"), None, Some("abc"), "abc"),
+        ("button", Some("abc"), Some("def"), Some("abc"), "abc"),
+        ("SUBMIT", Some("abc"), None, Some("abc"), "abc"),
+        ("hidden", Some("abc"), Some("def"), Some("abc"), "abc"),
+        ("CHECKBOX", Some(""), Some("def"), Some("def"), "def"),
+        ("button", Some(""), Some("def"), Some("def"), "def"),
+        ("date", Some("2024-01-02"), None, None, "2024-01-02"),
+        ("range", Some("37"), None, None, "37"),
+        ("number", Some("12"), None, None, "12"),
+        ("checkbox", None, None, None, ""),
     ];
     let inputs: Vec<NodeId> = rows
         .iter()
-        .map(|(_, _, attribute, _)| match attribute {
+        .map(|(_, _, attribute, ..)| match attribute {
             Some(value) => create(
                 &mut doc,
                 body,
@@ -198,16 +204,16 @@ fn what_was_typed_comes_back_through_a_change_of_type() {
         doc.mutate().set_attribute(*id, kind.clone(), to);
     }
     doc.resolve(0.0);
-    for (id, (to, _, attribute, written)) in inputs.iter().zip(rows) {
+    for (id, (to, _, _, written, _)) in inputs.iter().zip(rows) {
         let element = doc.get_node(*id).unwrap().element_data().unwrap();
         let value = element.attr(LocalName::from("value"));
-        assert_eq!(value, written.or(attribute), "the value attribute of {to}");
+        assert_eq!(value, written, "the value attribute of {to}");
     }
     for id in &inputs {
         doc.mutate().set_attribute(*id, kind.clone(), "text");
     }
     doc.resolve(0.0);
-    for (id, (to, typed, attribute, _)) in inputs.iter().zip(rows) {
+    for (id, (to, _, _, _, back)) in inputs.iter().zip(rows) {
         let element = doc.get_node(*id).unwrap().element_data().unwrap();
         let text = element
             .text_input_data()
@@ -215,6 +221,108 @@ fn what_was_typed_comes_back_through_a_change_of_type() {
             .editor
             .raw_text()
             .to_string();
-        assert_eq!(text, typed.or(attribute).unwrap_or(""), "back from {to}");
+        assert_eq!(text, back, "back from {to}");
+    }
+}
+
+/// A `value` attribute set or removed while the input is a date or a range
+/// is what the field shows back in `text`, as in Chrome 157 when nothing was
+/// typed: the value kept from the editor gives way to it, as the editor's own
+/// text does to a change of the attribute.
+#[test]
+fn a_value_set_while_the_type_is_another_comes_back() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    // To, the attribute, the attribute set in the other type, or removed, and
+    // the value back in text.
+    let rows = [
+        ("date", "2024-01-01", Some("2024-02-02"), "2024-02-02"),
+        ("date", "2024-01-01", None, ""),
+        ("range", "10", Some("20"), "20"),
+    ];
+    let inputs: Vec<NodeId> = rows
+        .iter()
+        .map(|(_, value, ..)| {
+            create(
+                &mut doc,
+                body,
+                "input",
+                &[("type", "text"), ("value", value)],
+            )
+        })
+        .collect();
+    doc.resolve(0.0);
+    let kind = QualName::new(None, ns!(), LocalName::from("type"));
+    let value = QualName::new(None, ns!(), LocalName::from("value"));
+    for (id, (to, ..)) in inputs.iter().zip(rows) {
+        doc.mutate().set_attribute(*id, kind.clone(), to);
+    }
+    doc.resolve(0.0);
+    for (id, (_, _, set, _)) in inputs.iter().zip(rows) {
+        match set {
+            Some(set) => doc.mutate().set_attribute(*id, value.clone(), set),
+            None => doc.mutate().clear_attribute(*id, value.clone()),
+        }
+    }
+    doc.resolve(0.0);
+    for id in &inputs {
+        doc.mutate().set_attribute(*id, kind.clone(), "text");
+    }
+    doc.resolve(0.0);
+    for (id, (to, _, set, back)) in inputs.iter().zip(rows) {
+        let element = doc.get_node(*id).unwrap().element_data().unwrap();
+        let text = element
+            .text_input_data()
+            .unwrap()
+            .editor
+            .raw_text()
+            .to_string();
+        assert_eq!(text, back, "{to} with {set:?}");
+    }
+}
+
+/// An input whose `type` is a button state in any case shows its `value` as
+/// a text child and is laid out as a lowercase `submit` is.
+#[test]
+fn a_button_input_is_one_in_any_case() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let kinds = ["submit", "SUBMIT", "Button", "RESET"];
+    let inputs: Vec<NodeId> = kinds
+        .iter()
+        .map(|kind| {
+            let container = create(&mut doc, body, "div", &[]);
+            create(
+                &mut doc,
+                container,
+                "input",
+                &[("type", kind), ("value", "Go")],
+            )
+        })
+        .collect();
+    doc.resolve(0.0);
+    let submit = doc.get_client_bounding_rect(inputs[0]).unwrap();
+    for (id, kind) in inputs.iter().zip(kinds) {
+        let node = doc.get_node(*id).unwrap();
+        assert_eq!(node.children.len(), 1, "{kind}");
+        assert_eq!(node.text_content(), "Go", "{kind}");
+        let rect = doc.get_client_bounding_rect(*id).unwrap();
+        assert_eq!(
+            (rect.width, rect.height),
+            (submit.width, submit.height),
+            "{kind}"
+        );
     }
 }
