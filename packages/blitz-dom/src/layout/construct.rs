@@ -22,7 +22,7 @@ use crate::{
     layout::damage::{
         CONSTRUCT_BOX, CONSTRUCT_DESCENDENT, CONSTRUCT_FC, sort_layout_children_by_order,
     },
-    node::{NodeFlags, NodeKind, SpecialElementData, TextInputData, TextLayout},
+    node::{NodeFlags, NodeKind, SpecialElementData, TextInputData, TextLayout, has_value_mode},
     qual_name, stylo_to_parley,
     traversal::iter_children_and_pseudos,
 };
@@ -426,13 +426,18 @@ fn collect_layout_children_with_wrap(
     flush_pseudo_elements(doc, container_node_id);
 
     // An input whose `type` no longer puts it in a state edited as text keeps
-    // no editor from when it did, so it is built as what it is now.
+    // no editor from when it did, so it is built as what it is now. In HTML's
+    // value mode it keeps the editor's text as its value, for the next editor.
     if let Some(element) = doc.nodes[container_node_id].element_data_mut()
         && element.name.local == local_name!("input")
         && !element.is_text_input()
-        && matches!(element.special_data, SpecialElementData::TextInput(_))
+        && let SpecialElementData::TextInput(data) = &element.special_data
     {
-        element.special_data = SpecialElementData::None;
+        let kept = match has_value_mode(element.attr(local_name!("type"))) {
+            true => SpecialElementData::InputValue(data.editor.raw_text().to_string()),
+            false => SpecialElementData::None,
+        };
+        element.special_data = kept;
     }
 
     if let Some(el) = doc.nodes[container_node_id].data.downcast_element() {
@@ -915,8 +920,16 @@ fn create_text_editor(doc: &mut BaseDocument, input_element_id: NodeId, is_multi
         .map(|s| stylo_to_parley::base_direction(s.clone_direction(), s.clone_unicode_bidi()))
         .unwrap_or(parley::BaseDirection::Auto);
 
+    let kept = node
+        .element_data()
+        .and_then(|element| match &element.special_data {
+            SpecialElementData::InputValue(text) => Some(text.clone()),
+            _ => None,
+        });
     let initial_text = if is_multiline {
         node.text_content()
+    } else if let Some(kept) = kept {
+        kept
     } else {
         node.attr(local_name!("value")).unwrap_or("").to_string()
     };

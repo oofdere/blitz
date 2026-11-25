@@ -405,6 +405,10 @@ pub enum SpecialElementData {
     TextInput(TextInputData),
     /// Checkbox checked state
     CheckboxInput(bool),
+    /// The value of an input in HTML's value mode that is not edited as text,
+    /// kept from the editor it had when its `type` left the text states, so
+    /// that the next editor starts from it
+    InputValue(String),
     /// Selected files
     #[cfg(feature = "file-input")]
     FileInput(FileData),
@@ -425,6 +429,7 @@ impl Clone for SpecialElementData {
             Self::TableRoot(data) => Self::TableRoot(data.clone()),
             Self::TextInput(data) => Self::TextInput(data.clone()),
             Self::CheckboxInput(data) => Self::CheckboxInput(*data),
+            Self::InputValue(text) => Self::InputValue(text.clone()),
             #[cfg(feature = "file-input")]
             Self::FileInput(data) => Self::FileInput(data.clone()),
             Self::None => Self::None,
@@ -872,12 +877,36 @@ impl ElementData {
         std::mem::take(&mut self.inline_layout_data)
     }
 
+    /// Whether this is an `input` shown as a button, `button`, `submit` or
+    /// `reset`, its `type` read without regard to ASCII case.
     pub(crate) fn is_button_input(&self) -> bool {
         self.name.local == local_name!("input")
-            && matches!(
-                self.attr(local_name!("type")),
-                Some("button" | "submit" | "reset")
-            )
+            && self.attr(local_name!("type")).is_some_and(|kind| {
+                ["button", "submit", "reset"]
+                    .iter()
+                    .any(|button| kind.eq_ignore_ascii_case(button))
+            })
+    }
+
+    /// What an `input` in HTML's value mode writes into its `value`
+    /// attribute when its `type` changes to `kind`, a state in the default or
+    /// the default/on mode, as HTML's steps for a change of `type` have it:
+    /// the text of its editor, or the value kept from one, when that is not
+    /// the attribute's value already.
+    pub(crate) fn value_left_for(&self, kind: &str) -> Option<String> {
+        if self.name.local != local_name!("input")
+            || !has_value_mode(self.attr(local_name!("type")))
+            || has_value_mode(Some(kind))
+            || kind.eq_ignore_ascii_case("file")
+        {
+            return None;
+        }
+        let text = match &self.special_data {
+            SpecialElementData::TextInput(data) => data.editor.raw_text().to_string(),
+            SpecialElementData::InputValue(text) => text.clone(),
+            _ => return None,
+        };
+        (self.attr(local_name!("value")).unwrap_or("") != text).then_some(text)
     }
 
     /// Whether this is a checkbox or a radio button, its `type` read without
@@ -1008,6 +1037,7 @@ impl std::fmt::Debug for SpecialElementData {
             SpecialElementData::TableRoot(_) => f.write_str("NodeSpecificData::TableRoot"),
             SpecialElementData::TextInput(_) => f.write_str("NodeSpecificData::TextInput"),
             SpecialElementData::CheckboxInput(_) => f.write_str("NodeSpecificData::CheckboxInput"),
+            SpecialElementData::InputValue(_) => f.write_str("NodeSpecificData::InputValue"),
             #[cfg(feature = "file-input")]
             SpecialElementData::FileInput(_) => f.write_str("NodeSpecificData::FileInput"),
             SpecialElementData::None => f.write_str("NodeSpecificData::None"),
@@ -1073,6 +1103,17 @@ mod file_data {
 }
 #[cfg(feature = "file-input")]
 pub use file_data::FileData;
+
+/// Whether an `input` whose `type` attribute is `kind` is in HTML's value
+/// mode "value", keeping its value apart from its `value` attribute: in
+/// every state but hidden, checkbox, radio, file and the buttons, read
+/// without regard to ASCII case.
+pub(crate) fn has_value_mode(kind: Option<&str>) -> bool {
+    const OTHER: [&str; 8] = [
+        "hidden", "submit", "image", "reset", "button", "checkbox", "radio", "file",
+    ];
+    kind.is_none_or(|kind| !OTHER.iter().any(|other| kind.eq_ignore_ascii_case(other)))
+}
 
 #[cfg(test)]
 mod tests {

@@ -321,7 +321,23 @@ impl DocumentMutator<'_> {
         }
     }
 
+    /// Sets an attribute. When it is the `type` of an `input` that leaves
+    /// HTML's value mode for the default or the default/on mode, the value the
+    /// input had is then written into its `value` attribute, as HTML's steps
+    /// for a change of `type` have it, so that it is kept.
     pub fn set_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
+        let left = (name.local == local_name!("type"))
+            .then(|| self.doc.nodes[node_id].element_data())
+            .flatten()
+            .and_then(|element| element.value_left_for(value));
+        self.set_one_attribute(node_id, name, value);
+        if let Some(left) = left {
+            let name = QualName::new(None, markup5ever::ns!(), local_name!("value"));
+            self.set_one_attribute(node_id, name, &left);
+        }
+    }
+
+    fn set_one_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
         let node_is_in_document = self.doc.nodes[node_id].flags.is_in_document();
         if node_is_in_document {
             self.doc.snapshot_node(node_id, &name.local);
@@ -1344,6 +1360,7 @@ impl<'doc> DocumentMutator<'doc> {
                 SpecialElementData::TableRoot(_) => {}
                 SpecialElementData::TextInput(_) => {}
                 SpecialElementData::CheckboxInput(_) => {}
+                SpecialElementData::InputValue(_) => {}
                 #[cfg(feature = "file-input")]
                 SpecialElementData::FileInput(_) => {}
                 SpecialElementData::None => {}
@@ -1574,13 +1591,11 @@ impl<'doc> DocumentMutator<'doc> {
             return;
         };
 
-        let tagname = data.name.local.as_ref();
-        let type_attr = data.attr(local_name!("type"));
         let value = data.attr(local_name!("value"));
 
         // Checkbox state must exist even if the input never gets a box (e.g. `display: none`
         // inside a `<label>`), so that it can be toggled and matched by `:checked`.
-        if let ("input", Some("checkbox" | "radio")) = (tagname, type_attr) {
+        if data.is_toggle_input() {
             let element = self.doc.nodes[target_id].element_data_mut().unwrap();
             if element.checkbox_input_checked().is_none() {
                 let checked = element.has_attr(local_name!("checked"));
@@ -1592,16 +1607,18 @@ impl<'doc> DocumentMutator<'doc> {
 
         // Add content of "value" attribute as a text node child if:
         //   - Tag name is
-        if let ("input", Some("button" | "submit" | "reset"), Some(value)) =
-            (tagname, type_attr, value)
-        {
+        if let Some(value) = value.filter(|_| data.is_button_input()) {
             let value = value.to_string();
             let id = self.create_text_node(&value);
             self.append_children(target_id, &[id]);
             return;
         }
         #[cfg(feature = "file-input")]
-        if let ("input", Some("file")) = (tagname, type_attr) {
+        if data.name.local == local_name!("input")
+            && data
+                .attr(local_name!("type"))
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("file"))
+        {
             let button_id = self.create_element(
                 qual_name!("button", html),
                 vec![

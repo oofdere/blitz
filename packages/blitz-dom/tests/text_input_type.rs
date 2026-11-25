@@ -142,3 +142,79 @@ fn an_input_whose_type_leaves_the_text_states_drops_its_editor() {
     doc.resolve(0.0);
     assert!(inputs.iter().all(|id| editor(&doc, *id)));
 }
+
+/// What was typed in a text field comes back when its `type` goes to another
+/// state and back to `text`, as in Chrome 157. A checkbox, a radio button,
+/// a button or a hidden input writes it into its `value` attribute, as
+/// HTML's steps for leaving the value mode have it, and one in the value
+/// mode, as a date or a range, keeps it. With nothing typed, a checkbox
+/// writes nothing and the field comes back empty.
+#[test]
+fn what_was_typed_comes_back_through_a_change_of_type() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let rows = [
+        ("CHECKBOX", Some("abc"), Some("def"), Some("abc")),
+        ("Radio", Some("abc"), Some("def"), Some("abc")),
+        ("CHECKBOX", Some("abc"), None, Some("abc")),
+        ("button", Some("abc"), Some("def"), Some("abc")),
+        ("hidden", Some("abc"), Some("def"), Some("abc")),
+        ("date", Some("2024-01-02"), None, None),
+        ("range", Some("37"), None, None),
+        ("number", Some("12"), None, None),
+        ("checkbox", None, None, None),
+    ];
+    let inputs: Vec<NodeId> = rows
+        .iter()
+        .map(|(_, _, attribute, _)| match attribute {
+            Some(value) => create(
+                &mut doc,
+                body,
+                "input",
+                &[("type", "text"), ("value", value)],
+            ),
+            None => create(&mut doc, body, "input", &[("type", "text")]),
+        })
+        .collect();
+    doc.resolve(0.0);
+    for (id, (_, typed, ..)) in inputs.iter().zip(rows) {
+        if let Some(typed) = typed {
+            let element = doc.get_node_mut(*id).unwrap().element_data_mut().unwrap();
+            element
+                .text_input_data_mut()
+                .unwrap()
+                .editor
+                .set_text(typed);
+        }
+    }
+    let kind = QualName::new(None, ns!(), LocalName::from("type"));
+    for (id, (to, ..)) in inputs.iter().zip(rows) {
+        doc.mutate().set_attribute(*id, kind.clone(), to);
+    }
+    doc.resolve(0.0);
+    for (id, (to, _, attribute, written)) in inputs.iter().zip(rows) {
+        let element = doc.get_node(*id).unwrap().element_data().unwrap();
+        let value = element.attr(LocalName::from("value"));
+        assert_eq!(value, written.or(attribute), "the value attribute of {to}");
+    }
+    for id in &inputs {
+        doc.mutate().set_attribute(*id, kind.clone(), "text");
+    }
+    doc.resolve(0.0);
+    for (id, (to, typed, attribute, _)) in inputs.iter().zip(rows) {
+        let element = doc.get_node(*id).unwrap().element_data().unwrap();
+        let text = element
+            .text_input_data()
+            .unwrap()
+            .editor
+            .raw_text()
+            .to_string();
+        assert_eq!(text, typed.or(attribute).unwrap_or(""), "back from {to}");
+    }
+}
