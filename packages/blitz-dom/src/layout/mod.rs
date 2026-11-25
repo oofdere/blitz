@@ -49,9 +49,11 @@ const DEFAULT_OBJECT_SIZE: taffy::Size<f32> = taffy::Size {
 /// The intrinsic dimensions and default object size for a replaced element
 /// whose intrinsic dimensions are determined by its tag: an image with no
 /// loaded resource has no intrinsic dimensions and a zero default object size;
-/// a canvas has an intrinsic size and aspect ratio given by its width/height
-/// attributes (defaulting to 300x150); other replaced elements (video, iframe,
-/// embed) have no intrinsic dimensions and the 300x150 default object size.
+/// a canvas has an intrinsic size given by its width/height attributes
+/// (defaulting to 300x150), and the aspect ratio of that size unless a side of
+/// it is 0, as Chrome 157 gives it none then; other replaced elements (video,
+/// iframe, embed) have no intrinsic dimensions and the 300x150 default object
+/// size.
 fn tag_intrinsic_sizes(
     tag_name: &LocalName,
     attr_size: taffy::Size<Option<f32>>,
@@ -66,12 +68,29 @@ fn tag_intrinsic_sizes(
             IntrinsicSizes {
                 width: Some(width),
                 height: Some(height),
-                ratio: Some(width / height),
+                ratio: (width > 0.0 && height > 0.0).then(|| width / height),
             },
             DEFAULT_OBJECT_SIZE,
         );
     }
     (IntrinsicSizes::default(), DEFAULT_OBJECT_SIZE)
+}
+
+/// The HTML "rules for parsing non-negative integers"
+/// (https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-non-negative-integers),
+/// which a canvas reads its width and height attributes with, as Chrome 157
+/// does: ASCII whitespace is skipped, then a sign, then the digits up to the
+/// first character that is not one. No digits, a negative value other than 0,
+/// or one past `i32::MAX` is an error, which leaves the attribute's default.
+fn parse_non_negative_integer(value: &str) -> Option<f32> {
+    let value = value.trim_start_matches(['\t', '\n', '\x0C', '\r', ' ']);
+    let (negative, value) = match value.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, value.strip_prefix('+').unwrap_or(value)),
+    };
+    let digits = value.bytes().take_while(u8::is_ascii_digit).count();
+    let integer: i32 = value[..digits].parse().ok()?;
+    (!negative || integer == 0).then_some(integer as f32)
 }
 
 pub(crate) fn resolve_calc_value(calc_ptr: *const (), parent_size: f32) -> f32 {
@@ -446,14 +465,14 @@ impl LayoutPassState<'_> {
                     // `synthesize_presentational_hints_for_legacy_attributes`, so they
                     // are already part of the style. They are only read here for the
                     // elements whose attributes determine their *intrinsic* size
-                    // (canvas, and custom widgets on canvas tags).
+                    // (canvas, and custom widgets on canvas tags), as a canvas reads them.
                     let attr_size = taffy::Size {
                         width: element_data
                             .attr(local_name!("width"))
-                            .and_then(|val| val.parse::<f32>().ok()),
+                            .and_then(parse_non_negative_integer),
                         height: element_data
                             .attr(local_name!("height"))
-                            .and_then(|val| val.parse::<f32>().ok()),
+                            .and_then(parse_non_negative_integer),
                     };
 
                     // Get the element's intrinsic dimensions and default object size
