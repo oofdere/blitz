@@ -889,6 +889,36 @@ impl ElementData {
             })
     }
 
+    /// Whether this is an `input` edited and sized as a line of text: one
+    /// whose `type` is `text`, `password`, `email`, `number`, `search`, `tel`
+    /// or `url`, read without regard to ASCII case, or is missing, empty or a
+    /// value HTML has no state for, which it takes as `text`, as Chrome 157
+    /// does. Its date, time, color, range and file states have controls of
+    /// their own, which blitz does not build.
+    pub(crate) fn is_text_input(&self) -> bool {
+        const OTHER: [&str; 15] = [
+            "hidden",
+            "checkbox",
+            "radio",
+            "file",
+            "submit",
+            "image",
+            "reset",
+            "button",
+            "color",
+            "date",
+            "datetime-local",
+            "month",
+            "time",
+            "week",
+            "range",
+        ];
+        self.name.local == local_name!("input")
+            && self
+                .attr(local_name!("type"))
+                .is_none_or(|kind| !OTHER.iter().any(|other| kind.eq_ignore_ascii_case(other)))
+    }
+
     pub fn is_submit_button(&self) -> bool {
         if self.name.local != local_name!("button") {
             return false;

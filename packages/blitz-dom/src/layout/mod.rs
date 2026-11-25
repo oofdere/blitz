@@ -413,7 +413,7 @@ impl LayoutPassState<'_> {
                                 },
                             );
                         }
-                        None | Some("text" | "password" | "email" | "tel" | "url" | "search") => {
+                        _ if element_data.is_text_input() => {
                             let style = node.layout_style();
                             let mut output = compute_leaf_layout(
                                 inputs,

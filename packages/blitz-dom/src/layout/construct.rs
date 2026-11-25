@@ -438,10 +438,7 @@ fn collect_layout_children_with_wrap(
                 leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, true);
                 return;
-            } else if matches!(
-                type_attr,
-                None | Some("text" | "password" | "email" | "number" | "search" | "tel" | "url")
-            ) {
+            } else if el.is_text_input() {
                 leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, false);
                 return;
