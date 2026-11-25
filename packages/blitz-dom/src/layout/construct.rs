@@ -1,5 +1,4 @@
 use blitz_traits::node_id::NodeId;
-use core::str;
 use std::sync::Arc;
 use stylo_taffy::CopyStyleGetters;
 
@@ -426,14 +425,20 @@ fn collect_layout_children_with_wrap(
 
     flush_pseudo_elements(doc, container_node_id);
 
+    // An input whose `type` no longer puts it in a state edited as text keeps
+    // no editor from when it did, so it is built as what it is now.
+    if let Some(element) = doc.nodes[container_node_id].element_data_mut()
+        && element.name.local == local_name!("input")
+        && !element.is_text_input()
+        && matches!(element.special_data, SpecialElementData::TextInput(_))
+    {
+        element.special_data = SpecialElementData::None;
+    }
+
     if let Some(el) = doc.nodes[container_node_id].data.downcast_element() {
         // Handle text inputs
         let tag_name = el.name.local.as_ref();
         if matches!(tag_name, "input" | "textarea") {
-            let type_attr: Option<&str> = doc.nodes[container_node_id]
-                .data
-                .downcast_element()
-                .and_then(|el| el.attr(local_name!("type")));
             if tag_name == "textarea" {
                 leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, true);
@@ -442,7 +447,7 @@ fn collect_layout_children_with_wrap(
                 leave_children_out_of_layout(doc, container_node_id);
                 create_text_editor(doc, container_node_id, false);
                 return;
-            } else if matches!(type_attr, Some("checkbox" | "radio")) {
+            } else if el.is_toggle_input() {
                 leave_children_out_of_layout(doc, container_node_id);
                 create_checkbox_input(doc, container_node_id);
                 return;
