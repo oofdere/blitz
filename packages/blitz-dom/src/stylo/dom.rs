@@ -407,8 +407,14 @@ impl selectors::Element for BlitzNode<'_> {
         false
     }
 
+    /// Whether the element has no children but comments and empty text, as
+    /// Selectors 3 and Chrome 157 have it: a space counts.
     fn is_empty(&self) -> bool {
-        self.dom_children().next().is_none()
+        self.dom_children().all(|child| match &child.data {
+            NodeData::Comment { .. } => true,
+            NodeData::Text(text) => text.content.is_empty(),
+            _ => false,
+        })
     }
 
     fn is_root(&self) -> bool {

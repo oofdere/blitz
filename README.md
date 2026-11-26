@@ -503,6 +503,10 @@ Each patch below fixes something those calls reach, and each has a test in
     are not rendered, and an input shows no `::before` or `::after` of the
     page's, as in Chrome 157. A file input's parts are still its children,
     built when it is inserted. Two tests. New.
+77. **A comment or an empty text node leaves an element `:empty`.** Stylo's
+    `:empty` took any child, so an input holding only a comment of the
+    page's was not empty. Selectors 3 and Chrome 157 count neither a comment
+    nor a text node with no data, though they count a space. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
