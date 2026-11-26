@@ -1,6 +1,7 @@
 //! An element is `:empty` when it has no children but comments and text
 //! nodes with no data, as Selectors 3 and Chrome 157 have it: a text node
-//! holding a space counts.
+//! holding a space counts. A change of that restyles what is matched through
+//! it, its later siblings included.
 
 use blitz_dom::{
     BaseDocument, ColorScheme, DocumentConfig, LocalName, NodeId, QualName, UserAgentStylesheet,
@@ -50,4 +51,43 @@ fn a_comment_or_empty_text_leaves_an_element_empty() {
         let rect = doc.get_client_bounding_rect(div).unwrap();
         assert_eq!(rect.width, width, "case {index}");
     }
+}
+
+/// A div whose span is moved out becomes `:empty`, and the div after it,
+/// matched through `div:empty + p`, takes that style, and gives it up when a
+/// text node is put back in.
+#[test]
+fn a_change_of_emptiness_restyles_later_siblings() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(
+            "html, body, div, p { display: block } p { width: 20px; height: 10px } \
+             div:empty + p { width: 50px }",
+        )],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let element = |doc: &mut BaseDocument, parent: NodeId, name: &str| {
+        let id = doc.mutate().create_element(
+            QualName::new(None, ns!(html), LocalName::from(name)),
+            Vec::new(),
+        );
+        doc.mutate().append_children(parent, &[id]);
+        id
+    };
+    let html = element(&mut doc, root, "html");
+    let body = element(&mut doc, html, "body");
+    let div = element(&mut doc, body, "div");
+    let span = element(&mut doc, div, "span");
+    let next = element(&mut doc, body, "p");
+    doc.resolve(0.0);
+    let width = |doc: &BaseDocument| doc.get_client_bounding_rect(next).unwrap().width;
+    assert_eq!(width(&doc), 20.0);
+    doc.mutate().append_children(body, &[span]);
+    doc.resolve(0.0);
+    assert_eq!(width(&doc), 50.0);
+    let text = doc.mutate().create_text_node("x");
+    doc.mutate().append_children(div, &[text]);
+    doc.resolve(0.0);
+    assert_eq!(width(&doc), 20.0);
 }

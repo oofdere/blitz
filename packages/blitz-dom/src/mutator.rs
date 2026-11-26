@@ -833,6 +833,23 @@ impl DocumentMutator<'_> {
         ) {
             hint |= RestyleHint::RESTYLE_SELF;
         }
+        // Whether the parent is `:empty` may change what its later siblings match through
+        // `:empty + E` or `:empty ~ E`, as Gecko's restyle for a change of emptiness has it.
+        if flags.contains(ElementSelectorFlags::HAS_EMPTY_SELECTOR)
+            && let Some(grandparent_id) = parent.parent
+            && self.doc.nodes[grandparent_id]
+                .selector_flags()
+                .get()
+                .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)
+        {
+            let siblings = mem::take(&mut self.doc.nodes[grandparent_id].children);
+            let later = siblings.iter().skip_while(|id| **id != parent_id).skip(1);
+            for id in later {
+                self.doc.nodes[*id].set_restyle_hint(RestyleHint::restyle_subtree());
+            }
+            self.doc.nodes[grandparent_id].children = siblings;
+        }
+        let parent = &self.doc.nodes[parent_id];
         // A change with no earlier element sibling restyles all children with one hint rather
         // than hinting each later sibling, so inserting or removing at the front stays linear.
         let front_change = flags.contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)

@@ -507,6 +507,11 @@ Each patch below fixes something those calls reach, and each has a test in
     `:empty` took any child, so an input holding only a comment of the
     page's was not empty. Selectors 3 and Chrome 157 count neither a comment
     nor a text node with no data, though they count a space. One test. New.
+78. **A change of whether an element is `:empty` restyles its later
+    siblings.** An element that a child was added to or removed from was
+    restyled for `:empty`, but a sibling matched through `:empty + E` or
+    `:empty ~ E` kept its style. Its later siblings are now restyled too
+    when its parent has sibling selectors, as Gecko does. One test. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer
