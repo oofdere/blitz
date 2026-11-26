@@ -326,8 +326,8 @@ impl DocumentMutator<'_> {
     /// document writes left values ([`DocumentConfig::writes_left_values`]),
     /// the value the input had is then written into its `value` attribute, as
     /// HTML's steps for a change of `type` have it, so that it is kept. An
-    /// input in the document whose `type` or `value` changes has what it
-    /// shows of its own built again: the label of a button, from its value.
+    /// input in the document whose `type` or `value` changes is built again
+    /// ([`Self::rebuild_input`]).
     ///
     /// [`DocumentConfig::writes_left_values`]: crate::DocumentConfig::writes_left_values
     pub fn set_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
@@ -347,8 +347,9 @@ impl DocumentMutator<'_> {
     /// Builds again what an `input` in the document shows of its own after
     /// its attribute `name` changed: everything after a change of its `type`,
     /// and a button's label, from its value, after a change of its `value`.
-    /// An input has no children of the page's, so its children are all of
-    /// that.
+    /// What it shows is made in layout and is none of its children, which are
+    /// the page's and are kept as they are: its box is built again, and an
+    /// input that became a checkbox or a radio button gets its checkedness.
     fn rebuild_input(&mut self, node_id: NodeId, name: &LocalName) {
         let node = &self.doc.nodes[node_id];
         let Some(element) = node.element_data() else {
@@ -362,8 +363,14 @@ impl DocumentMutator<'_> {
         if !rebuilt || !node.flags.is_in_document() {
             return;
         }
-        self.remove_and_drop_all_children(node_id);
-        self.process_button_input(node_id);
+        let toggles = element.is_toggle_input();
+        let node = &mut self.doc.nodes[node_id];
+        node.insert_damage(ALL_DAMAGE);
+        node.mark_ancestors_dirty();
+        self.mutations_occurred = true;
+        if toggles {
+            self.process_button_input(node_id);
+        }
     }
 
     fn set_one_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
@@ -1633,8 +1640,6 @@ impl<'doc> DocumentMutator<'doc> {
             return;
         };
 
-        let value = data.attr(local_name!("value"));
-
         // Checkbox state must exist even if the input never gets a box (e.g. `display: none`
         // inside a `<label>`), so that it can be toggled and matched by `:checked`.
         if data.is_toggle_input() {
@@ -1647,14 +1652,6 @@ impl<'doc> DocumentMutator<'doc> {
             return;
         }
 
-        // Add content of "value" attribute as a text node child if:
-        //   - Tag name is
-        if let Some(value) = value.filter(|_| data.is_button_input()) {
-            let value = value.to_string();
-            let id = self.create_text_node(&value);
-            self.append_children(target_id, &[id]);
-            return;
-        }
         #[cfg(feature = "file-input")]
         if data.name.local == local_name!("input")
             && data

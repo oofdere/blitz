@@ -423,8 +423,6 @@ fn collect_layout_children_with_wrap(
         element_data.take_inline_layout();
     }
 
-    flush_pseudo_elements(doc, container_node_id);
-
     // An input whose `type` no longer puts it in a state edited as text keeps
     // no editor from when it did, so it is built as what it is now. In HTML's
     // value mode it keeps the editor's text as its value, for the next editor.
@@ -439,6 +437,15 @@ fn collect_layout_children_with_wrap(
         };
         element.special_data = kept;
     }
+
+    if doc.nodes[container_node_id]
+        .element_data()
+        .is_some_and(|el| el.is_button_input())
+    {
+        return build_button_input(doc, container_node_id);
+    }
+
+    flush_pseudo_elements(doc, container_node_id);
 
     if let Some(el) = doc.nodes[container_node_id].data.downcast_element() {
         // Handle text inputs
@@ -984,6 +991,102 @@ fn create_text_editor(doc: &mut BaseDocument, input_element_id: NodeId, is_multi
     editor.set_base_direction(base_direction);
 
     editor.refresh_layout(&mut doc.font_ctx.lock().unwrap(), &mut doc.layout_ctx);
+}
+
+/// A button input shows its `value` as its label and nothing else: not the page's
+/// children of it, nor a `::before` or an `::after` of the page's, as in Chrome 157.
+/// The label is an anonymous inline box in the place of the input's `::before`,
+/// holding the value as text and styled from the input's style each time the box is
+/// built, laid out in the input's own inline formatting context. Neither Stylo nor the
+/// input's children see it, so the input matches `:empty`, and its children are the
+/// page's alone.
+fn build_button_input(doc: &mut BaseDocument, input_id: NodeId) {
+    use style::selector_parser::PseudoElement;
+
+    leave_children_out_of_layout(doc, input_id);
+    if let Some(after) = doc.nodes[input_id].after() {
+        doc.remove_and_drop_pe(after);
+        doc.nodes[input_id].set_pe_by_index(0, None);
+    }
+    let node = &doc.nodes[input_id];
+    let shown = node.display_style().is_some_and(|display| {
+        !matches!(
+            display.inside(),
+            DisplayInside::None | DisplayInside::Contents
+        )
+    });
+    let value = node
+        .element_data()
+        .and_then(|el| el.attr(local_name!("value")))
+        .filter(|_| shown)
+        .map(str::to_owned);
+    let (Some(value), Some(input_style)) = (value, node.primary_styles().map(|s| s.clone())) else {
+        if let Some(before) = doc.nodes[input_id].before() {
+            doc.remove_and_drop_pe(before);
+            doc.nodes[input_id].set_pe_by_index(1, None);
+        }
+        return;
+    };
+
+    let label = match doc.nodes[input_id].before() {
+        Some(label) => label,
+        None => {
+            let label = doc.create_node(NodeData::AnonymousBlock(Box::new(ElementData::new(
+                DUMMY_NAME,
+                Vec::new(),
+            ))));
+            doc.nodes[label].parent = Some(input_id);
+            doc.nodes[label].layout_parent.set(Some(input_id));
+            if doc.nodes[input_id]
+                .flags
+                .contains(NodeFlags::IS_IN_DOCUMENT)
+            {
+                doc.nodes[label].flags.insert(NodeFlags::IS_IN_DOCUMENT);
+            }
+            doc.nodes[input_id].set_pe_by_index(1, Some(label));
+            label
+        }
+    };
+    let style = {
+        let read_guard = doc.guard.read();
+        let guards = StylesheetGuards::same(&read_guard);
+        doc.stylist.style_for_anonymous::<BlitzNode>(
+            &guards,
+            &PseudoElement::ServoAnonymousBox,
+            &input_style,
+        )
+    };
+    let mut element_data = StyloElementData::default();
+    element_data.styles.primary = Some(style);
+    element_data.set_restyled();
+    element_data.damage = ALL_DAMAGE;
+    *doc.nodes[label].stylo_element_data_mut().ensure_init_mut() = element_data;
+
+    let text = doc.nodes[label]
+        .children
+        .first()
+        .copied()
+        .filter(|&id| doc.nodes[id].is_text_node());
+    match text {
+        Some(text) => {
+            if let NodeData::Text(text) = &mut doc.nodes[text].data {
+                if text.content != value {
+                    text.content = value;
+                }
+            }
+        }
+        None => {
+            let text = doc.create_text_node(&value);
+            doc.nodes[text].parent = Some(label);
+            doc.nodes[label].children.push(text);
+        }
+    }
+
+    doc.deferred_construction_nodes.push(ConstructionTask {
+        node_id: input_id,
+        data: ConstructionTaskData::InlineLayout(Box::new(TextLayout::new())),
+    });
+    doc.nodes[input_id].flags.insert(NodeFlags::IS_INLINE_ROOT);
 }
 
 fn create_checkbox_input(doc: &mut BaseDocument, input_element_id: NodeId) {

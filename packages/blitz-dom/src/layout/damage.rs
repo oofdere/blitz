@@ -137,6 +137,16 @@ impl BaseDocument {
             damage.insert(CONSTRUCT_BOX);
         }
 
+        // A button input's label is styled from the input's style as its box is built
+        // (`build_button_input`), so a change of that style builds the box again.
+        if !damage.is_empty()
+            && self.nodes[node_id]
+                .element_data()
+                .is_some_and(|el| el.is_button_input())
+        {
+            damage.insert(CONSTRUCT_BOX);
+        }
+
         // Reconstruction replaces the anonymous boxes with freshly styled ones.
         if !own_damage.is_empty() && !damage.intersects(CONSTRUCT_BOX | CONSTRUCT_FC) {
             let anonymous_damage = self.refresh_anonymous_block_styles(node_id);

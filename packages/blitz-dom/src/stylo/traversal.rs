@@ -449,6 +449,11 @@ fn sync_pseudo_element_styles(
     if before_node_id.is_none() && after_node_id.is_none() {
         return;
     }
+    // A button input shows no pseudo-element of the page's: what is in the place of
+    // its `::before` is its label, styled as its box is built.
+    if el.element_data().is_some_and(|el| el.is_button_input()) {
+        return;
+    }
 
     // Note: yes these are kinda backwards (see `flush_pseudo_elements`)
     let pseudos = data.styles.pseudos.as_array();

@@ -29,6 +29,15 @@ fn create(
     id
 }
 
+/// The text an input shows, as its inline formatting context lays it out.
+fn shown(doc: &BaseDocument, id: NodeId) -> String {
+    let element = doc.get_node(id).unwrap().element_data().unwrap();
+    element
+        .inline_layout_data
+        .as_deref()
+        .map_or(String::new(), |layout| layout.text.clone())
+}
+
 /// Each field is as wide as a field with no `type`, 300 in a line of 600,
 /// and as high as its line, 20.
 #[test]
@@ -290,7 +299,8 @@ fn a_value_set_while_the_type_is_another_comes_back() {
 }
 
 /// An input whose `type` is a button state in any case shows its `value` as
-/// a text child and is laid out as a lowercase `submit` is.
+/// its label, which is none of its children, and is laid out as a lowercase
+/// `submit` is.
 #[test]
 fn a_button_input_is_one_in_any_case() {
     let mut doc = BaseDocument::new(DocumentConfig {
@@ -318,8 +328,8 @@ fn a_button_input_is_one_in_any_case() {
     let submit = doc.get_client_bounding_rect(inputs[0]).unwrap();
     for (id, kind) in inputs.iter().zip(kinds) {
         let node = doc.get_node(*id).unwrap();
-        assert_eq!(node.children.len(), 1, "{kind}");
-        assert_eq!(node.text_content(), "Go", "{kind}");
+        assert!(node.children.is_empty(), "{kind}");
+        assert_eq!(shown(&doc, *id), "Go", "{kind}");
         let rect = doc.get_client_bounding_rect(*id).unwrap();
         assert_eq!(
             (rect.width, rect.height),
@@ -385,8 +395,8 @@ fn a_field_that_becomes_a_button_shows_its_value() {
     doc.resolve(0.0);
     let node = doc.get_node(field).unwrap();
     assert_eq!(
-        (node.children.len(), node.text_content()),
-        (1, "Go".to_owned())
+        (node.children.len(), shown(&doc, field)),
+        (0, "Go".to_owned())
     );
     let size = |doc: &BaseDocument, id| {
         let rect = doc.get_client_bounding_rect(id).unwrap();
@@ -397,8 +407,8 @@ fn a_field_that_becomes_a_button_shows_its_value() {
     doc.resolve(0.0);
     let node = doc.get_node(field).unwrap();
     assert_eq!(
-        (node.children.len(), node.text_content()),
-        (1, "Stop".to_owned())
+        (node.children.len(), shown(&doc, field)),
+        (0, "Stop".to_owned())
     );
     doc.mutate().set_attribute(field, kind, "text");
     doc.resolve(0.0);

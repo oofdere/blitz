@@ -490,6 +490,19 @@ Each patch below fixes something those calls reach, and each has a test in
     layout as a text area's are: they have no box, and the bar is laid out
     as if it held nothing, its baseline its bottom margin edge. One test.
     New.
+76. **What an input shows of its own is none of its children.** A button
+    input's label was a text node appended to it, so Stylo found it
+    non-empty, though Chrome 157 matches `:empty` on every input the page
+    gives no children, and a change of `type` or `value` freed all its
+    children to build the label again, children of the page's included, so
+    an edit of one in the same batch panicked (Devin 4705278925 and
+    4705279215 on niso#1331). The label is now a text node in the place of
+    the input's `::before`, laid out in the input's own inline formatting
+    context, and a change of `type` or `value` builds the input's box
+    again and frees nothing. An input's children of the page's are kept and
+    are not rendered, and an input shows no `::before` or `::after` of the
+    page's, as in Chrome 157. A file input's parts are still its children,
+    built when it is inserted. Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

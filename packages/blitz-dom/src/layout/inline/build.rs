@@ -98,7 +98,7 @@ pub(crate) fn build_inline_layout_into(
             &text_transform,
         );
     }
-    for child_id in root_node.children.iter().copied() {
+    for child_id in shown_children(root_node).iter().copied() {
         // Text lifted out of a `display: contents` element into this anonymous block keeps
         // that element's white space, as text takes its parent's style.
         let child = &nodes[child_id];
@@ -368,6 +368,19 @@ fn last_text(nodes: &crate::NodeTree, root: &Node) -> Option<NodeId> {
     }
 }
 
+/// The children of `node` laid out in the inline formatting context it is the root of:
+/// none of an `input`'s, which are the page's and not rendered, its label being its
+/// `::before` (`build_button_input` in [`crate::layout::construct`]).
+fn shown_children(node: &Node) -> &[NodeId] {
+    match node
+        .element_data()
+        .is_some_and(|el| el.name.local == local_name!("input"))
+    {
+        true => &[],
+        false => &node.children[..],
+    }
+}
+
 /// What ends the content of an inline formatting context.
 enum Last {
     Text(NodeId),
@@ -379,7 +392,7 @@ enum Last {
 fn last_content(nodes: &crate::NodeTree, node: &Node) -> Option<Last> {
     node.after()
         .into_iter()
-        .chain(node.children.iter().rev().copied())
+        .chain(shown_children(node).iter().rev().copied())
         .chain(node.before())
         .find_map(|id| {
             let child = &nodes[id];
