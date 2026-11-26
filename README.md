@@ -481,6 +481,15 @@ Each patch below fixes something those calls reach, and each has a test in
     baseline and the line grew below it. It now has the baseline of its
     editor's first line, centred in its content box as it is painted, as an
     inline-block has its last line's (CSS 2.1 §10.8.1). One test. New.
+75. **A progress bar lays out none of its children.** A browser renders a
+    `<progress>` from a shadow tree of its own that shows none of them, so
+    its fallback content took room and set its baseline here alone: a bar
+    with fallback text sat a pixel higher in its line than one without (Rime
+    on niso#1385). Its children stay in the document, so `:empty` and the
+    sibling selectors see them as Chrome 157 does, and are left out of
+    layout as a text area's are: they have no box, and the bar is laid out
+    as if it held nothing, its baseline its bottom margin edge. One test.
+    New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

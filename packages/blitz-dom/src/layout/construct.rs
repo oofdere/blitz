@@ -459,6 +459,11 @@ fn collect_layout_children_with_wrap(
             }
         }
 
+        if tag_name == "progress" {
+            leave_children_out_of_layout(doc, container_node_id);
+            return;
+        }
+
         #[cfg(feature = "svg")]
         if matches!(tag_name, "svg") {
             let outer_html = doc.get_node(container_node_id).unwrap().svg_source();
