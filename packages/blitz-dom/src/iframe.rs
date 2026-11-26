@@ -72,6 +72,7 @@ impl BaseDocument {
             incremental: Some(self.incremental_layout),
             abort_signal: Some(abort_signal),
             subdocument_depth: self.subdocument_depth + 1,
+            writes_left_values: self.writes_left_values,
             // A sub-document is a separate devtools target with its own provider
             #[cfg(feature = "devtools")]
             devtools_provider: None,

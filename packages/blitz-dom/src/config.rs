@@ -72,6 +72,13 @@ pub struct DocumentConfig {
     /// Devtools provider notified of DOM mutations (e.g. by a remote inspector)
     #[cfg(feature = "devtools")]
     pub devtools_provider: Option<Arc<dyn DevtoolsProvider>>,
+    /// Whether an `input` whose `type` leaves HTML's value mode for the
+    /// default or the default/on mode writes its value into its `value`
+    /// attribute, as HTML's steps for a change of `type` have it. Defaults to
+    /// `false`: a document that mirrors a DOM kept elsewhere, which takes that
+    /// step itself and sends the attribute it writes, holds an editor that may
+    /// be behind it and would write a stale value the DOM does not have.
+    pub writes_left_values: bool,
 }
 
 /// The user-agent stylesheets a document has unless its config says otherwise: the
@@ -101,6 +108,7 @@ impl Default for DocumentConfig {
             subdocument_depth: 0,
             #[cfg(feature = "devtools")]
             devtools_provider: None,
+            writes_left_values: false,
         }
     }
 }

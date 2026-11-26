@@ -322,19 +322,48 @@ impl DocumentMutator<'_> {
     }
 
     /// Sets an attribute. When it is the `type` of an `input` that leaves
-    /// HTML's value mode for the default or the default/on mode, the value the
-    /// input had is then written into its `value` attribute, as HTML's steps
-    /// for a change of `type` have it, so that it is kept.
+    /// HTML's value mode for the default or the default/on mode, and the
+    /// document writes left values ([`DocumentConfig::writes_left_values`]),
+    /// the value the input had is then written into its `value` attribute, as
+    /// HTML's steps for a change of `type` have it, so that it is kept. An
+    /// input in the document whose `type` or `value` changes has what it
+    /// shows of its own built again: the label of a button, from its value.
+    ///
+    /// [`DocumentConfig::writes_left_values`]: crate::DocumentConfig::writes_left_values
     pub fn set_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
-        let left = (name.local == local_name!("type"))
+        let left = (self.doc.writes_left_values && name.local == local_name!("type"))
             .then(|| self.doc.nodes[node_id].element_data())
             .flatten()
             .and_then(|element| element.value_left_for(value));
+        let local = name.local.clone();
         self.set_one_attribute(node_id, name, value);
         if let Some(left) = left {
             let name = QualName::new(None, markup5ever::ns!(), local_name!("value"));
             self.set_one_attribute(node_id, name, &left);
         }
+        self.rebuild_input(node_id, &local);
+    }
+
+    /// Builds again what an `input` in the document shows of its own after
+    /// its attribute `name` changed: everything after a change of its `type`,
+    /// and a button's label, from its value, after a change of its `value`.
+    /// An input has no children of the page's, so its children are all of
+    /// that.
+    fn rebuild_input(&mut self, node_id: NodeId, name: &LocalName) {
+        let node = &self.doc.nodes[node_id];
+        let Some(element) = node.element_data() else {
+            return;
+        };
+        let rebuilt = match *name {
+            local_name!("type") => element.name.local == local_name!("input"),
+            local_name!("value") => element.is_button_input(),
+            _ => false,
+        };
+        if !rebuilt || !node.flags.is_in_document() {
+            return;
+        }
+        self.remove_and_drop_all_children(node_id);
+        self.process_button_input(node_id);
     }
 
     fn set_one_attribute(&mut self, node_id: NodeId, name: QualName, value: &str) {
@@ -478,7 +507,15 @@ impl DocumentMutator<'_> {
         }
     }
 
+    /// Removes an attribute, and builds again what an `input` shows of its own
+    /// as [`Self::set_attribute`] does.
     pub fn clear_attribute(&mut self, node_id: NodeId, name: QualName) {
+        let local = name.local.clone();
+        self.clear_one_attribute(node_id, name);
+        self.rebuild_input(node_id, &local);
+    }
+
+    fn clear_one_attribute(&mut self, node_id: NodeId, name: QualName) {
         let node_is_in_document = self.doc.nodes[node_id].flags.is_in_document();
         if node_is_in_document {
             self.doc.snapshot_node(node_id, &name.local);

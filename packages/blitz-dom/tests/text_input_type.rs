@@ -155,6 +155,7 @@ fn what_was_typed_comes_back_through_a_change_of_type() {
     let mut doc = BaseDocument::new(DocumentConfig {
         ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
         viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        writes_left_values: true,
         ..DocumentConfig::default()
     });
     let root = doc.root_node().id;
@@ -234,6 +235,7 @@ fn a_value_set_while_the_type_is_another_comes_back() {
     let mut doc = BaseDocument::new(DocumentConfig {
         ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
         viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        writes_left_values: true,
         ..DocumentConfig::default()
     });
     let root = doc.root_node().id;
@@ -325,4 +327,80 @@ fn a_button_input_is_one_in_any_case() {
             "{kind}"
         );
     }
+}
+
+/// A document that mirrors a DOM kept elsewhere, as by default, writes no
+/// value into the `value` attribute of an input leaving the value mode: the
+/// DOM takes that step and sends the attribute it writes, and the editor here
+/// may be behind it, as when the last character was deleted and the type
+/// changed before the editor was told. Chrome 157 has no `value` attribute on
+/// a field emptied that way and then made a checkbox.
+#[test]
+fn a_mirror_writes_no_value_when_an_input_leaves_the_value_mode() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let input = create(&mut doc, body, "input", &[("type", "text")]);
+    doc.resolve(0.0);
+    let element = doc.get_node_mut(input).unwrap().element_data_mut().unwrap();
+    element.text_input_data_mut().unwrap().editor.set_text("x");
+    let kind = QualName::new(None, ns!(), LocalName::from("type"));
+    doc.mutate().set_attribute(input, kind, "checkbox");
+    doc.resolve(0.0);
+    let element = doc.get_node(input).unwrap().element_data().unwrap();
+    assert_eq!(element.attr(LocalName::from("value")), None);
+}
+
+/// A field in the document that becomes a button shows its value as its
+/// label, as one made a button does, and as Chrome 157 shows it, the same
+/// size as a fresh button: in any case, and again when its value changes. A
+/// button that becomes a field again shows no label.
+#[test]
+fn a_field_that_becomes_a_button_shows_its_value() {
+    let mut doc = BaseDocument::new(DocumentConfig {
+        ua_stylesheets: vec![UserAgentStylesheet::parse(UA_CSS)],
+        viewport: Some(Viewport::new(800, 600, 1.0, ColorScheme::Light)),
+        ..DocumentConfig::default()
+    });
+    let root = doc.root_node().id;
+    let html = create(&mut doc, root, "html", &[]);
+    let body = create(&mut doc, html, "body", &[("style", "margin: 0")]);
+    let fresh = create(
+        &mut doc,
+        body,
+        "input",
+        &[("type", "button"), ("value", "Go")],
+    );
+    let field = create(&mut doc, body, "input", &[("type", "text")]);
+    doc.resolve(0.0);
+    let kind = QualName::new(None, ns!(), LocalName::from("type"));
+    let value = QualName::new(None, ns!(), LocalName::from("value"));
+    doc.mutate().set_attribute(field, kind.clone(), "BUTTON");
+    doc.mutate().set_attribute(field, value.clone(), "Go");
+    doc.resolve(0.0);
+    let node = doc.get_node(field).unwrap();
+    assert_eq!(
+        (node.children.len(), node.text_content()),
+        (1, "Go".to_owned())
+    );
+    let size = |doc: &BaseDocument, id| {
+        let rect = doc.get_client_bounding_rect(id).unwrap();
+        (rect.width, rect.height)
+    };
+    assert_eq!(size(&doc, field), size(&doc, fresh));
+    doc.mutate().set_attribute(field, value.clone(), "Stop");
+    doc.resolve(0.0);
+    let node = doc.get_node(field).unwrap();
+    assert_eq!(
+        (node.children.len(), node.text_content()),
+        (1, "Stop".to_owned())
+    );
+    doc.mutate().set_attribute(field, kind, "text");
+    doc.resolve(0.0);
+    assert!(doc.get_node(field).unwrap().children.is_empty());
 }

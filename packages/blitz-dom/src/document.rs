@@ -215,6 +215,10 @@ pub struct BaseDocument {
     /// every node is treated as damaged on every `resolve`, so the same damage
     /// pipeline reconstructs and relays out the whole tree.
     pub(crate) incremental_layout: bool,
+
+    /// Whether an input leaving the value mode writes its value into its
+    /// `value` attribute ([`DocumentConfig::writes_left_values`]).
+    pub(crate) writes_left_values: bool,
     /// How deeply this document is nested within other documents
     /// (0 for a root document). Used to limit `<iframe>` nesting depth.
     pub(crate) subdocument_depth: usize,
@@ -488,6 +492,7 @@ impl BaseDocument {
             flags: DocumentFlags::empty(),
             style_threading: config.style_threading,
             incremental_layout: config.incremental.unwrap_or(true),
+            writes_left_values: config.writes_left_values,
             subdocument_depth: config.subdocument_depth,
             devtool_settings: DevtoolSettings::default(),
             url: base_url,
