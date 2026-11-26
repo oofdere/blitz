@@ -409,6 +409,33 @@ bitflags! {
 }
 
 impl BaseDocument {
+    /// Sets the box the toolkit that draws the element `node_id` as a native control gives
+    /// it, or takes it away with `None` ([`NativeBox`](stylo_taffy::NativeBox)). The next
+    /// layout lays the element out at that size where the page's `width` or `height` is
+    /// `auto`, with the box's insets in place of its padding and border, and lays out again
+    /// what holds it. Setting the box it already has changes nothing.
+    pub fn set_native_box(&mut self, node_id: NodeId, native: Option<stylo_taffy::NativeBox>) {
+        let Some(element) = self
+            .nodes
+            .get_mut(node_id)
+            .and_then(|node| node.data.downcast_element_mut())
+        else {
+            return;
+        };
+        if element.native_box == native {
+            return;
+        }
+        element.native_box = native;
+        let mut at = Some(node_id);
+        while let Some(id) = at {
+            let node = &mut self.nodes[id];
+            node.invalidate_layout_cache();
+            at = node.layout_parent.get().or(node.parent);
+        }
+    }
+}
+
+impl BaseDocument {
     /// Create a new (empty) [`BaseDocument`] with the specified configuration
     pub fn new(config: DocumentConfig) -> Self {
         init_stylo_prefs();

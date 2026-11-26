@@ -125,6 +125,12 @@ pub struct ElementData {
     pub before: Option<NodeId>,
     pub after: Option<NodeId>,
 
+    /// The box the toolkit that draws this element as a native control gives it, which the
+    /// embedder set with [`BaseDocument::set_native_box`](crate::BaseDocument::set_native_box):
+    /// layout takes it in place of the size and the padding and border of the user agent's
+    /// own table, where the page's `width` or `height` is `auto`.
+    pub native_box: Option<stylo_taffy::NativeBox>,
+
     /// Detailed layout information from the most recent layout (currently
     /// grid track sizing information for grid containers only). Used by
     /// devtools grid inspection and out-of-flow grid-area positioning.
@@ -362,6 +368,7 @@ impl Clone for ElementData {
             may_have_animations: AtomicBool::new(false),
             before: None,
             after: None,
+            native_box: None,
             detailed_layout_info: taffy::DetailedLayoutInfo::None,
             display_constructed_as: StyloDisplay::Block,
             layout_data: None,
@@ -482,6 +489,7 @@ impl ElementData {
             may_have_animations: AtomicBool::new(false),
             before: None,
             after: None,
+            native_box: None,
             detailed_layout_info: taffy::DetailedLayoutInfo::None,
             display_constructed_as: StyloDisplay::Block,
             layout_data: None,

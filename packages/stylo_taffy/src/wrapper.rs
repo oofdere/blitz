@@ -45,6 +45,19 @@ bitflags! {
     }
 }
 
+/// The box a native control's own toolkit gives it, which the embedder asked its renderer
+/// for: the border box `size` it lays out at where the page's `width` or `height` is `auto`,
+/// and the `insets` from the border box to where its content goes, which take the place of
+/// its padding and border in layout. Both are physical and in CSS pixels. The computed style
+/// is left as the page has it.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct NativeBox {
+    /// The size of the border box.
+    pub size: taffy::Size<f32>,
+    /// From each edge of the border box to the content: left, right, top and bottom.
+    pub insets: taffy::Rect<f32>,
+}
+
 /// A wrapper struct for anything that `Deref`s to a [`stylo::ComputedValues`](ComputedValues) (can be pointed to by an `&` reference, [`Arc`](std::sync::Arc),
 /// [`Ref`](std::cell::Ref), etc). It implements [`taffy`]'s [layout traits](taffy::traits) and can used with Taffy's [layout algorithms](taffy::compute).
 pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
@@ -70,6 +83,10 @@ pub struct TaffyStyloStyle<T: Deref<Target = ComputedValues>> {
     /// `parent_size.width`, i.e. the containing block's block size.
     #[cfg(feature = "writing-mode")]
     pub percent_basis: Option<f32>,
+    /// The box a native control's toolkit gives it, when the embedder set one
+    /// ([`NativeBox`]): its insets are its padding, it has no border, and it is that size on
+    /// an axis whose `width` or `height` is `auto`.
+    pub native: Option<NativeBox>,
 }
 
 impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
@@ -108,6 +125,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             align_axis_is_inline: false,
             #[cfg(feature = "writing-mode")]
             percent_basis: None,
+            native: None,
         }
     }
 
@@ -126,6 +144,7 @@ impl<T: Deref<Target = ComputedValues>> TaffyStyloStyle<T> {
             align_axis_is_inline: false,
             #[cfg(feature = "writing-mode")]
             percent_basis: None,
+            native: None,
         }
     }
 
@@ -196,6 +215,11 @@ impl<T: Deref<Target = ComputedValues>> From<TaffyStyloStyle<T>> for taffy::Styl
         if value.is_native_toggle() {
             style.padding = taffy::Rect::zero();
             style.border = taffy::Rect::zero();
+        }
+        if value.native.is_some() {
+            style.padding = taffy::CoreStyle::padding(&value);
+            style.border = taffy::CoreStyle::border(&value);
+            style.size = taffy::CoreStyle::size(&value);
         }
         if value.flags.contains(StyleFlags::OVERFLOW_TO_VIEWPORT) {
             style.overflow = taffy::Point {
@@ -292,10 +316,27 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
     #[inline]
     fn size(&self) -> taffy::Size<taffy::Dimension> {
         let position_styles = self.style.get_position();
-        self.size(taffy::Size {
+        let mut size = taffy::Size {
             width: convert::dimension(&position_styles.width),
             height: convert::dimension(&position_styles.height),
-        })
+        };
+        if let Some(native) = self.native {
+            let content_box =
+                convert::box_sizing(position_styles.box_sizing) == taffy::BoxSizing::ContentBox;
+            let own = |dimension: taffy::Dimension, border_box: f32, inset: f32| match dimension
+                .is_auto()
+            {
+                true if content_box => taffy::Dimension::length((border_box - inset).max(0.0)),
+                true => taffy::Dimension::length(border_box),
+                false => dimension,
+            };
+            let insets = native.insets;
+            size = taffy::Size {
+                width: own(size.width, native.size.width, insets.left + insets.right),
+                height: own(size.height, native.size.height, insets.top + insets.bottom),
+            };
+        }
+        self.size(size)
     }
 
     #[inline]
@@ -335,6 +376,15 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn padding(&self) -> taffy::Rect<taffy::LengthPercentage> {
+        if let Some(native) = self.native {
+            let insets = native.insets;
+            return self.rect(taffy::Rect {
+                left: taffy::LengthPercentage::length(insets.left),
+                right: taffy::LengthPercentage::length(insets.right),
+                top: taffy::LengthPercentage::length(insets.top),
+                bottom: taffy::LengthPercentage::length(insets.bottom),
+            });
+        }
         if self.is_native_toggle() {
             return taffy::Rect::zero();
         }
@@ -363,7 +413,7 @@ impl<T: Deref<Target = ComputedValues>> taffy::CoreStyle for TaffyStyloStyle<T> 
 
     #[inline]
     fn border(&self) -> taffy::Rect<taffy::LengthPercentage> {
-        if self.is_native_toggle() {
+        if self.native.is_some() || self.is_native_toggle() {
             return taffy::Rect::zero();
         }
         let border_styles = self.style.get_border();

@@ -7,7 +7,7 @@ mod copy_getters;
 pub use copy_getters::CopyStyleGetters;
 
 mod wrapper;
-pub use wrapper::{StyleFlags, TaffyStyloStyle};
+pub use wrapper::{NativeBox, StyleFlags, TaffyStyloStyle};
 
 pub mod convert;
 #[doc(inline)]

@@ -1261,6 +1261,10 @@ impl Node {
         // Own-layout_wm by default: the node's own algorithm reads its style in its own axes
         let mut style = stylo_taffy::TaffyStyloStyle::new_in(styles, flags, own_wm);
         style.own_wm = own_wm;
+        style.native = self
+            .data
+            .downcast_element()
+            .and_then(|element| element.native_box);
         style
     }
 
