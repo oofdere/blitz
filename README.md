@@ -511,7 +511,17 @@ Each patch below fixes something those calls reach, and each has a test in
     siblings.** An element that a child was added to or removed from was
     restyled for `:empty`, but a sibling matched through `:empty + E` or
     `:empty ~ E` kept its style. Its later siblings are now restyled too
-    when its parent has sibling selectors, as Gecko does. One test. New.
+    when its parent has sibling selectors, as Gecko does and as Chrome 157
+    does for a `<p>`. Chrome 157 restyles neither an input nor its siblings
+    when the input's children change: an input given a span keeps the style
+    it had when empty until something else restyles it. Here an input is
+    restyled as any element is, so its commit's note that a button input
+    whose child is moved out matches `input:empty + div` again is true of
+    this fork, not of Chrome. A change of a text node's data between empty
+    and not restyles the same way (Telex 211942971 on niso#1331): in
+    Chrome 157 a div holding an empty text node and its `:empty + div`
+    sibling are 50 and 70 wide, both 20 once the data is `x`, and 50 and
+    70 again once it is empty. Two tests. New.
 
 Patches 27 to 29 come from Lens's fuzzer (`lens_fuzz`, seeds 234 and 244, 1442,
 and 600), patch 30 from measuring patch 24's cost, patch 31 from Lens's fuzzer

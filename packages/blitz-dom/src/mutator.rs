@@ -246,6 +246,7 @@ impl DocumentMutator<'_> {
         };
 
         let changed = text.content != value;
+        let emptied = text.content.is_empty() != value.is_empty();
         if changed {
             self.mutations_occurred |= node_is_in_document;
             text.content.clear();
@@ -267,6 +268,9 @@ impl DocumentMutator<'_> {
             if let Some(parent_id) = parent_id {
                 let parent = &mut self.doc.nodes[parent_id];
                 parent.insert_damage(ALL_DAMAGE);
+                if emptied {
+                    self.restyle_for_empty_change(parent_id);
+                }
             }
 
             self.maybe_record_node(parent_id);
@@ -285,6 +289,7 @@ impl DocumentMutator<'_> {
         let parent_id = node.parent;
         match node.text_data_mut() {
             Some(data) => {
+                let emptied = data.content.is_empty() && !text.is_empty();
                 data.content += text;
                 self.mutations_occurred |= node_is_in_document;
                 if node_is_in_document {
@@ -295,6 +300,9 @@ impl DocumentMutator<'_> {
                 }
                 if let Some(parent_id) = parent_id {
                     self.doc.nodes[parent_id].insert_damage(ALL_DAMAGE);
+                    if emptied {
+                        self.restyle_for_empty_change(parent_id);
+                    }
                 }
                 Ok(())
             }
@@ -833,22 +841,7 @@ impl DocumentMutator<'_> {
         ) {
             hint |= RestyleHint::RESTYLE_SELF;
         }
-        // Whether the parent is `:empty` may change what its later siblings match through
-        // `:empty + E` or `:empty ~ E`, as Gecko's restyle for a change of emptiness has it.
-        if flags.contains(ElementSelectorFlags::HAS_EMPTY_SELECTOR)
-            && let Some(grandparent_id) = parent.parent
-            && self.doc.nodes[grandparent_id]
-                .selector_flags()
-                .get()
-                .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)
-        {
-            let siblings = mem::take(&mut self.doc.nodes[grandparent_id].children);
-            let later = siblings.iter().skip_while(|id| **id != parent_id).skip(1);
-            for id in later {
-                self.doc.nodes[*id].set_restyle_hint(RestyleHint::restyle_subtree());
-            }
-            self.doc.nodes[grandparent_id].children = siblings;
-        }
+        self.restyle_for_empty_change(parent_id);
         let parent = &self.doc.nodes[parent_id];
         // A change with no earlier element sibling restyles all children with one hint rather
         // than hinting each later sibling, so inserting or removing at the front stays linear.
@@ -905,6 +898,39 @@ impl DocumentMutator<'_> {
         // The traversal only descends into an element flagged as having dirty descendants.
         parent.set_dirty_descendants();
         parent.mark_ancestors_dirty();
+    }
+
+    /// Restyles what may match otherwise once the element `parent_id` may have gained
+    /// its first child that counts for `:empty`, or lost its last one (a comment and an
+    /// empty text node count for nothing): the element itself, when it was matched
+    /// against `:empty`, and its later siblings, when they are matched through
+    /// `:empty + E` or `:empty ~ E`, as Gecko's restyle for a change of emptiness has it.
+    fn restyle_for_empty_change(&mut self, parent_id: NodeId) {
+        let parent = &mut self.doc.nodes[parent_id];
+        if !parent
+            .selector_flags()
+            .get()
+            .contains(ElementSelectorFlags::HAS_EMPTY_SELECTOR)
+        {
+            return;
+        }
+        parent.set_restyle_hint(RestyleHint::RESTYLE_SELF);
+        let Some(grandparent_id) = parent.parent else {
+            return;
+        };
+        if !self.doc.nodes[grandparent_id]
+            .selector_flags()
+            .get()
+            .contains(ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS)
+        {
+            return;
+        }
+        let siblings = mem::take(&mut self.doc.nodes[grandparent_id].children);
+        let later = siblings.iter().skip_while(|id| **id != parent_id).skip(1);
+        for id in later {
+            self.doc.nodes[*id].set_restyle_hint(RestyleHint::restyle_subtree());
+        }
+        self.doc.nodes[grandparent_id].children = siblings;
     }
 
     // Tree mutation methods
